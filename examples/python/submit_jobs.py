@@ -58,22 +58,5 @@ def main():
         x['segment']['depends_on'] = res.json()['job-ID'] ## Update segment job with the job id 
         res = requests.post(segment_url, json=x['segment']) ## Submit segment job
 
-
-
-    # rs = (grequests.post(spine_url, json=x['spine']) for x in contents)    
-    # status = grequests.map(rs)
-    #print(f'Spine finished in: {time.time() -start}')
-
-    # start=time.time()
-    # rs = (requests.post(segment_url, json=x['segment']) for x in contents)  
-    # status = grequests.map(rs)
-    # print(f'Spine finished in: {time.time() -start}')
-
-
-
-
-
-
-
 if __name__ == '__main__':
     main()

@@ -2,51 +2,37 @@ name: main-abc
 
 services:
   ## FRONTEND
-
   frontend:
     networks:
-      - body_comp
-
+      - abc
     image: dmcsweeney/bodycomp-frontend
-
-    #build: ./frontend/
-
     ports:
-      - 5000:5000
-
+      - ${FRONTEND_PORT}:5000
     volumes:
       - ./frontend/src:/app/src
       - ./ssl/cert.key:/ssl/cert.key:ro
       - ./ssl/cert.crt:/ssl/cert.crt:ro
-
     environment:
       - VITE_BACKEND_URI=${VITE_BACKEND_URI}
-      - VITE_BACKEND_PORT=5001
-      - VITE_MONGO_EXPRESS_PORT=5003
-
+      - VITE_BACKEND_PORT=${BACKEND_PORT}
+      - VITE_MONGO_EXPRESS_PORT=${MONGO_EXPRESS_PORT}
     depends_on:
       - backend
-
     logging:
       driver: local
-
       options:
         max-size: "10m"
-
         max-file: "5"
 
   ## THE MAIN SERVICE
 
   backend:
     networks:
-      - body_comp
-
+      - abc
     image: dmcsweeney/bodycomp-backend
-    #build: ./backend/
 
     ports:
       - 5001:5001
-
     volumes:
       - ./data/inputs:/data/inputs:ro
       - ./data/outputs:/data/outputs
@@ -54,78 +40,46 @@ services:
       - ./data/outputs/logs:/var/log
       - ./ssl/cert.key:/ssl/cert.key:ro
       - ./ssl/cert.crt:/ssl/cert.crt:ro
-      #- /home/topol/Documents/web-abc/backend/models:/models
       - conquest-store:/data/inbox
-
     command: flask run --cert=/ssl/cert.crt --key=/ssl/cert.key
-
     environment:
       - FLASK_APP=app.py
-
       - FLASK_RUN_HOST=0.0.0.0
-
-      - FLASK_RUN_PORT=5001
-
-      - HOST_IP=10.127.3.42
-
-      - BACKEND_PORT=5001
-
-      - MONGO_PORT=5004
-
-      - REDIS_PORT=5005
-
+      - FLASK_RUN_PORT=${BACKEND_PORT}
+      - HOST_IP=${HOST_IP}
+      - BACKEND_PORT=${BACKEND_PORT}
+      - MONGO_PORT=${MONGO_PORT}
+      - REDIS_PORT=${REDIS_PORT}
       - FLASK_DEBUG=True
-
-      - MONGO_INITDB_ROOT_USERNAME=abc-user
-
-      - MONGO_INITDB_ROOT_PASSWORD=abc-toolkit
-
-      - MONGO_INITDB_DATABASE=db
-
+      - MONGO_INITDB_ROOT_USERNAME=${MONGO_INITDB_ROOT_USERNAME}
+      - MONGO_INITDB_ROOT_PASSWORD=${MONGO_INITDB_ROOT_PASSWORD}
+      - MONGO_INITDB_DATABASE=${MONGO_INITDB_DATABASE}
     deploy:
       resources:
         reservations:
           devices:
             - driver: nvidia
-
               count: 1
-
               capabilities: [gpu]
-
     depends_on:
       - mongo
-
     logging:
       driver: local
-
       options:
         max-size: "10m"
-
         max-file: "5"
 
   ## CONQUEST SERVICE - handles dicom comms.
-
   conquest:
     networks:
-      - body_comp
-
+      - abc
     image: dmcsweeney/bodycomp-conquest
-    #build: ./conquest
-
+    
     tty: true
-
     stdin_open: true
-
-    environment:
-      - HOST_IP=backend
-
-      - BACKEND_PORT=5001
-
     ports:
-      - 5002:80
-
-      - 5006:5678
-
+      - ${CONQUEST_FRONTED_PORT}:80
+      - ${CONQUEST_DATA_PORT}:5678
     volumes:
       - ./conquest/trigger.lua:/Conquest-DICOM-Server/lua/trigger.lua
       - ./ssl/cert.key:/ssl/cert.key:ro
@@ -133,125 +87,83 @@ services:
       - conquest-store:/Conquest-DICOM-Server/data
 
   ## NoSQL database
-
   mongo:
     networks:
-      - body_comp
-
+      - abc
     image: "mongo:6.0-jammy"
-
     environment:
-      - MONGO_INITDB_ROOT_USERNAME=abc-user
-      - MONGO_INITDB_ROOT_PASSWORD=abc-toolkit
-      - MONGO_INITDB_DATABASE=db
-
+      - MONGO_INITDB_ROOT_USERNAME=${MONGO_INITDB_ROOT_USERNAME}
+      - MONGO_INITDB_ROOT_PASSWORD=${MONGO_INITDB_ROOT_PASSWORD}
+      - MONGO_INITDB_DATABASE=${MONGO_INITDB_DATABASE}
     volumes:
       - ./data/db:/data/db
-
     ports:
-      - 5004:27017
-
+      - ${MONGO_PORT}:27017
     logging:
       driver: "none"
-
     command: mongod --quiet --logpath /dev/null
 
-  ## Web server for the db, useful for debugging
-
+## Web server for the db, useful for debugging
   mongo-express:
     networks:
-      - body_comp
-
+      - abc
     image: "mongo-express:1.0.2"
     volumes:
       - ./ssl/cert.key:/ssl/cert.key:ro
       - ./ssl/cert.crt:/ssl/cert.crt:ro
     environment:
-      - ME_CONFIG_MONGODB_URL=mongodb://abc-user:abc-toolkit@mongo:27017
-      - ME_CONFIG_MONGODB_PORT=5004
+      - ME_CONFIG_MONGODB_URL=mongodb://${MONGO_INITDB_ROOT_USERNAME}:${MONGO_INITDB_ROOT_PASSWORD}@mongo:27017
+      - ME_CONFIG_MONGODB_PORT=${MONGO_PORT}
       - ME_CONFIG_MONGODB_ENABLE_ADMIN=true
       - ME_CONFIG_MONGODB_AUTH_DATABASE=admin
-      - ME_CONFIG_MONGODB_AUTH_USERNAME=abc-user
-      - ME_CONFIG_MONGODB_AUTH_PASSWORD=abc-toolkit
-      - ME_CONFIG_BASICAUTH_USERNAME=dev
-      - ME_CONFIG_BASICAUTH_PASSWORD=dev
+      - ME_CONFIG_MONGODB_AUTH_USERNAME=${MONGO_INITDB_ROOT_USERNAME}
+      - ME_CONFIG_MONGODB_AUTH_PASSWORD=${MONGO_INITDB_ROOT_PASSWORD}
+      - ME_CONFIG_BASICAUTH_USERNAME=${MONGOEXPRESS_LOGIN}
+      - ME_CONFIG_BASICAUTH_PASSWORD=${MONGOEXPRESS_PASSWORD}
       - ME_CONFIG_SITE_SSL_ENABLED=true
       - ME_CONFIG_SITE_SSL_CRT_PATH=/ssl/cert.crt
       - ME_CONFIG_SITE_SSL_KEY_PATH=/ssl/cert.key
-
     depends_on:
       - mongo
-
     ports:
-      - 5003:8081
-
-    # logging:
-
-    #   driver: "none"
-
+      - ${MONGO_EXPRESS_PORT}:8081
     restart: always
 
-  ## Job queue
-
+  ## Redis -- Job queue
   redis:
     networks:
-      - body_comp
-
+      - abc
     image: redis:7.2.4
-
     ports:
-      - 5005:6379
-
-        # logging:
-
-        #   driver: "none"
+      - ${REDIS_PORT}:6379
 
   ## Worker processes
-
   gpu-workers:
     networks:
-      - body_comp
-
+      - abc
     image: dmcsweeney/bodycomp-backend
-
-    #image: web-abc-backend
-
     command: rq worker -u redis://redis:6379 high default low
-
     volumes:
       - ./data/inputs:/data/inputs:ro
       - ./data/outputs:/data/outputs
       - ./backend/src:/src
-      # /etc/ssl/certs:/etc/ssl/certs:ro
-
-      #- ./backend/models:/models
-
       - conquest-store:/data/inbox
-
     environment:
       - FLASK_DEBUG=True
-      - HOST_IP=10.127.3.42
-      - BACKEND_PORT=5001
-      - MONGO_PORT=5004
-
-      - REDIS_PORT=5005
-
-      - MONGO_INITDB_ROOT_USERNAME=abc-user
-
-      - MONGO_INITDB_ROOT_PASSWORD=abc-toolkit
-
-      - MONGO_INITDB_DATABASE=db
-
+      - HOST_IP=${HOST_IP}
+      - BACKEND_PORT=${BACKEND_PORT}
+      - MONGO_PORT=${MONGO_PORT}
+      - REDIS_PORT=${REDIS_PORT}
+      - MONGO_INITDB_ROOT_USERNAME=${MONGO_INITDB_ROOT_USERNAME}
+      - MONGO_INITDB_ROOT_PASSWORD=${MONGO_INITDB_ROOT_PASSWORD}
+      - MONGO_INITDB_DATABASE=${MONGO_INITDB_DATABASE}
     deploy:
       replicas: 1
-
       resources:
         reservations:
           devices:
             - driver: nvidia
-
               count: 1
-
               capabilities: [gpu]
 
     depends_on:
@@ -259,42 +171,26 @@ services:
 
   cpu-workers:
     networks:
-      - body_comp
-
+      - abc
     image: dmcsweeney/bodycomp-backend
-
-    #image: web-abc-backend
-
+    
     command: rq worker -u redis://redis:6379 default low
-
     volumes:
       - ./data/inputs:/data/inputs:ro
       - ./data/outputs:/data/outputs
       - ./backend/src:/src
-      #- ./backend/models:/models
-
       - conquest-store:/data/inbox
-
     environment:
       - FLASK_DEBUG=True
-
-      - HOST_IP=10.127.3.42
-
-      - BACKEND_PORT=5001
-
-      - MONGO_PORT=5004
-
-      - REDIS_PORT=5005
-
-      - MONGO_INITDB_ROOT_USERNAME=abc-user
-
-      - MONGO_INITDB_ROOT_PASSWORD=abc-toolkit
-
-      - MONGO_INITDB_DATABASE=db
-
+      - HOST_IP=${HOST_IP}
+      - BACKEND_PORT=${BACKEND_PORT}
+      - MONGO_PORT=${MONGO_PORT}
+      - REDIS_PORT=${REDIS_PORT}
+      - MONGO_INITDB_ROOT_USERNAME=${MONGO_INITDB_ROOT_USERNAME}
+      - MONGO_INITDB_ROOT_PASSWORD=${MONGO_INITDB_ROOT_PASSWORD}
+      - MONGO_INITDB_DATABASE=${MONGO_INITDB_DATABASE}
     deploy:
       replicas: 2
-
     depends_on:
       - redis
 
@@ -304,11 +200,5 @@ volumes:
   conquest-store:
 
 networks:
-  body_comp:
+  abc:
     driver: bridge
-
-    ipam:
-      driver: default
-
-      config:
-        - subnet: 172.16.247.0/24

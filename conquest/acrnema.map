@@ -21,10 +21,8 @@
  *                                                          *
  ********************************************************** */
 
-BodyCompCONQUEST		127.0.0.1	5678		un
-CAT             cmpe-thera-fs2  11112       un
-CONQUESTSRV1    130.88.233.166  5678        un
-DMCSCONQUEST    130.88.233.166  5050        un
+ABCtoolkit		127.0.0.1	    5678		    un
+PACS		    127.0.0.1	    8888		    un
 V*	        	*               1234            un
 W*	        	*               666             un
 S*		        *               5678            un

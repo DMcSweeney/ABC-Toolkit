@@ -6,17 +6,23 @@
 
 
 [**Paper**]()
-| [**Requirements**](#requirments)
 | [**Getting started**](#getting_started)
+| [**Using ABC**](#using_abc)
+| [**Docs**](#docs)
 | [**Contribute**](#contribute)
 | [**Citation**](#citation)
 
+The ABC-Toolkit is a web-app for large-scale body composition analyses of CT scans.
+
+A [DICOM server](https://github.com/marcelvanherk/Conquest-DICOM-Server) is built-in so images can be sent directly from clinical PACS and automatically processed.   
+
+An exhaustive list of features is available here.
+
 ## Requirements
-<a name="requirements"></a>
 - [Docker](https://www.docker.com/get-started/). For linux, I used this [guide](https://docs.docker.com/engine/install/ubuntu/).
 - [nvidia-container-toolkit](https://docs.nvidia.com/datacenter/cloud-native/container-toolkit/latest/install-guide.html)
 
-On Windows, I recommend installing [Windows Subsystem for Linux](https://learn.microsoft.com/en-us/windows/wsl/install) (WSL). This isn't required but I haven't tested without it and the commands below may be slightly different.
+On Windows, I recommend installing [Windows Subsystem for Linux](https://learn.microsoft.com/en-us/windows/wsl/install). This isn't required but I haven't tested without it and the commands below may be slightly different.
 
 On Linux distributions, you will need to add the current user to the `docker` group with `sudo usermod -a -G docker USERNAME`.
 
@@ -26,17 +32,19 @@ On Linux distributions, you will need to add the current user to the `docker` gr
 ``` bash
 $ git clone git@github.com:DMcSweeney/ABC-toolkit.git && cd bodyComp
 $ cp .env-default .env 
-$ ## EDIT .env  <---!!
-$ mkdir data/inputs data/outputs
+$ # EDIT .env; 
 $ docker compose up
 ```
 
-## Using the toolkit
-Tasks are performed by making HTTP requests (GET, POST, PUT, DELETE) to pre-specified endpoints. ALl endpoints have an associated example in the `examples` folder. **I need to make better documentation for every endpoint!**
+## Using ABC
+<a name="using_abc"></a>
+Tasks are performed by making HTTP requests to pre-specified endpoints. All endpoints have an associated example in the `examples/api` folder.
 
-You can do this whichever way suits you best; through the command-line with tools like `curl`, from python scripts with the [requests library](https://pypi.org/project/requests/), from javascript with [axios](https://axios-http.com/docs/intro) or use a desktop app like [Postman](https://www.postman.com/). Some example python scripts are available in `examples/scripts/python`; `submit_jobs.py` is probably the most useful.
+You can do this whichever way suits you best: through the command-line with tools like `curl`, from python scripts with the [requests library](https://pypi.org/project/requests/), from javascript with [axios](https://axios-http.com/docs/intro) or use a desktop app like [Postman](https://www.postman.com/). Some example python scripts are available in `examples/scripts/python`; `submit_jobs.py` is good place to start! 
 
-Endpoints: All endpoints have an example in the `examples/api`
+## Docs
+<a name="docs"></a>
+
 
 ## Contribute
 <a name="contribute"></a>
