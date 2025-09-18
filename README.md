@@ -20,7 +20,7 @@ An exhaustive list of features is available here.
 
 ## Requirements
 - [Docker](https://www.docker.com/get-started/). For linux, I used this [guide](https://docs.docker.com/engine/install/ubuntu/).
-- [nvidia-container-toolkit](https://docs.nvidia.com/datacenter/cloud-native/container-toolkit/latest/install-guide.html)
+- [nvidia-container-toolkit](https://docs.nvidia.com/datacenter/cloud-native/container-toolkit/latest/install-guide.html). GPU is only needed for vertebral labelling; segmentation is performed by the CPU. Vertebral labelling can be bypassed (see **here**).
 
 On Windows, I recommend installing [Windows Subsystem for Linux](https://learn.microsoft.com/en-us/windows/wsl/install). This isn't required but I haven't tested without it and the commands below may be slightly different.
 
