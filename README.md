@@ -2,7 +2,8 @@
 ---
 
 [![License: Apache 2.0](https://img.shields.io/badge/License-Apache_2.0-blue.svg)](https://opensource.org/licenses/Apache-2.0)
-[![Github Pages](https://img.shields.io/badge/github%20pages-121013?style=for-the-badge&logo=github&logoColor=white)](https://dmcsweeney.github.io/ABC-Toolkit/)
+[![Docs](https://github.com/DMcSweeney/ABC-Toolkit/actions/workflows/pages/pages-build-deployment/badge.svg?branch=master)](https://github.com/DMcSweeney/ABC-Toolkit/actions/workflows/pages/pages-build-deployment)
+
 
 [**Paper**]()
 | [**Getting started**](#getting_started)
