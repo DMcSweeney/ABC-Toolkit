@@ -46,7 +46,6 @@ Example script for submitting jobs to the toolkit
 """
 import os
 import requests
-import polars as pl
 
 ## ABC config
 host_ip = 'localhost'

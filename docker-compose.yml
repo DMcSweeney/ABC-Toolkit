@@ -34,10 +34,10 @@ services:
     ports:
       - 5001:5001
     volumes:
-      - ./data/inputs:/data/inputs:ro
-      - ./data/outputs:/data/outputs
+      - ${INPUT_DIR}:/data/inputs:ro
+      - ${INPUT_DIR}:/data/outputs
       - ./backend/src:/src
-      - ./data/outputs/logs:/var/log
+      - ${INPUT_DIR}/logs:/var/log
       - ./ssl/cert.key:/ssl/cert.key:ro
       - ./ssl/cert.crt:/ssl/cert.crt:ro
       - conquest-store:/data/inbox
@@ -144,8 +144,8 @@ services:
     image: dmcsweeney/bodycomp-backend
     command: rq worker -u redis://redis:6379 high default low
     volumes:
-      - ./data/inputs:/data/inputs:ro
-      - ./data/outputs:/data/outputs
+      - ${INPUT_DIR}:/data/inputs:ro
+      - ${OUTPUT_DIR}:/data/outputs
       - ./backend/src:/src
       - conquest-store:/data/inbox
     environment:
@@ -176,8 +176,8 @@ services:
     
     command: rq worker -u redis://redis:6379 default low
     volumes:
-      - ./data/inputs:/data/inputs:ro
-      - ./data/outputs:/data/outputs
+      - ${INPUT_DIR}:/data/inputs:ro
+      - ${OUTPUT_DIR}:/data/outputs
       - ./backend/src:/src
       - conquest-store:/data/inbox
     environment:
