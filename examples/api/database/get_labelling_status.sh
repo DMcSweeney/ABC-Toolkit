@@ -1,3 +1,4 @@
 curl --request GET\
+    --insecure\
     --header "Content-Type: application/json"\
-    "http://localhost:5001/api/database/get_labelling_status?project=testingBaselineCTs"
+    "https://localhost:5001/api/database/get_labelling_status?project=hello"

@@ -1,4 +1,5 @@
 curl --request POST\
+	--insecure\
 	 --header "Content-Type: application/json"\
-	 --data '{"input_path": "/data/inputs/test/timepoint1", "project": "testing"}'\
-    http://127.0.0.1:5001/api/infer/spine
+	 --data '{"input_path": "/data/inputs/some_scan", "project": "hello"}'\
+    https://localhost:5001/api/infer/spine

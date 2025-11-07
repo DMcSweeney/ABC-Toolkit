@@ -1,3 +1,4 @@
 curl --request GET\
+    --insecure\
     --header "Content-Type: application/json"\
-    http://localhost:5001/api/database/get_vertebrae_in_project?project=Alex_Bladder
+    https://localhost:5001/api/database/get_vertebrae_in_project?project=hello

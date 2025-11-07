@@ -1,4 +1,5 @@
 curl --request GET\
+    --insecure\
     --header "Content-Type: application/json"\
-    "http://localhost:5001/api/post_process/get_stats_for_project?project=testingBaselineCTs&download=False"
+    "https://localhost:5001/api/post_process/get_stats_for_project?project=hello&download=False"
 

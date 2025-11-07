@@ -6,11 +6,14 @@ import requests
 
 
 host_ip = 'localhost' ## DANTE
-url = f'http://{host_ip}:5001/api/database/extract_stats_from_mask'
+url = f'https://{host_ip}:5001/api/database/extract_stats_from_mask'
 
 ## DATA config
-input_dir = "/home/donal/web-abc/data/outputs/testingBaselineCTs/masks_to_edit_again"
-project = 'testingBaselineCTs'
+input_dir = "./data/inputs/hello" ## Data location on host
+
+## Path mounted to ./data/inputs/ -- usually INPUT_DIR in .env
+input_dir_mount= './data/inputs/' 
+project = 'hello'
 
 def main():
     contents = []
@@ -19,7 +22,7 @@ def main():
     for patient_id in os.listdir(input_dir):
         for series_uuid in os.listdir(os.path.join(input_dir, patient_id)):
 
-            path_in_abc = input_dir.replace('/home/donal/web-abc', '')
+            path_in_abc = input_dir.replace(input_dir_mount, '/data/inputs/')
 
             patient_path = os.path.join(path_in_abc, patient_id, series_uuid)
 
@@ -33,7 +36,7 @@ def main():
     ## Submit jobs
     for x in contents:
         print(f'Request: {x}')
-        res = requests.post(url, json=x) ## Submit segment job
+        res = requests.post(url, json=x, verify=False) ## Submit segment job
     
 
 

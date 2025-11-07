@@ -11,8 +11,11 @@ spine_url = f'https://{host_ip}:5001/api/jobs/infer/spine'
 segment_url = f'https://{host_ip}:5001/api/jobs/infer/segment'
 
 ## DATA config
-input_dir = "/data/data_for_my_first_project/"
-project = 'my_first_project'
+## Path to data on the host
+input_dir = "./data/inputs/hello"
+## Path mounted to ./data/inputs/ -- usually INPUT_DIR in .env
+input_dir_mount = './data/inputs/'
+project = 'hello'
 
 def main():
     contents = []
@@ -22,7 +25,7 @@ def main():
     for patient in os.listdir(input_dir):
         ## THIS changes depending on how you have defined INPUT_DIR in your .env file
         ## The path provided in the request needs to be the path as seen inside the toolkit (i.e. always starts with /data/inputs/)
-        path_in_abc = input_dir.replace('/data/data_for_my_first_project/', '/data/inputs/')
+        path_in_abc = input_dir.replace(input_dir_mount, '/data/inputs/')
         patient_path = os.path.join(path_in_abc, patient)
         
         ## Create request bodies
