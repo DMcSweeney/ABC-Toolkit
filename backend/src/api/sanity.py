@@ -38,7 +38,7 @@ def fetchFirstImage():#
                 res = make_response(jsonify({
                 "message": f"No {vertebra} predictions found in {project}",
             }), 400)
-            return res
+                return res
     else:
         response = response[0]
 

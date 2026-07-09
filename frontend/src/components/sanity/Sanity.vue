@@ -1,5 +1,5 @@
 <script>
-import axios from 'axios';
+import api from '@/api/client';
 import popupViewer from '../popupViewer.vue';
 import failureForm from './FailureForm.vue';
 
@@ -47,8 +47,7 @@ export default {
                 window.alert('That was the last image!');
                 return;
             }
-            const path = `${import.meta.env.VITE_BACKEND_URI}/api/sanity/fetch_image_by_id?project=${this.project}&_id=${_id}&vertebra=${this.vertebra}`;
-            axios.post(path)
+            api.post('/api/sanity/fetch_image_by_id', null, { params: { project: this.project, _id: _id, vertebra: this.vertebra } })
                 .then((res) => {
                 this.src = `data:image/png;base64, ` + res.data.image;
                 this.patientID = res.data.patient_id;
@@ -65,26 +64,25 @@ export default {
                 } else {
                     this.showSpineSanity = true;
                 }
-                
-                
+
+
             })
-                .catch((err) => {
-                console.error(err);
+                .catch(() => {
+                // Error already surfaced via toast by the shared api client.
             });
         },
         fetchFirstImage() {
             // Fetch first image to rate
-            const path = `${import.meta.env.VITE_BACKEND_URI}/api/sanity/fetch_first_image?project=${this.project}&vertebra=${this.vertebra}`;
-            axios.post(path)
+            api.post('/api/sanity/fetch_first_image', null, { params: { project: this.project, vertebra: this.vertebra } })
                 .then((res) => {
                 this.src = `data:image/png;base64, ` + res.data.image;
                 this.patientID = res.data.patient_id;
                 this.status = res.data.status;
-                this.seriesUUID = res.data.series_uuid; 
+                this.seriesUUID = res.data.series_uuid;
                 this.acquisitionDate = res.data.acquisition_date;
                 this.inputPath = res.data.input_path;
-            }).catch((err) => {
-                    alert(err);
+            }).catch(() => {
+                    // Error already surfaced via toast by the shared api client.
             });
         },
 
@@ -92,30 +90,28 @@ export default {
         fetchPatientList() {
             // Get JSON object of patients and their images
             // Better solution when multiple images per patient 
-            const path = `${import.meta.env.VITE_BACKEND_URI}/api/sanity/fetch_patient_list?project=${this.project}&vertebra=${this.vertebra}`;
-            axios.get(path)
+            api.get('/api/sanity/fetch_patient_list', { params: { project: this.project, vertebra: this.vertebra } })
                 .then((res) => {
-                
+
                 this.imageDict = res.data.image_dict;
                 this.patientList = Object.keys(this.imageDict);
                 this.GetSpine();
                 this.getQCReport();
             })
-                .catch((err) => {
-                console.error(err);
+                .catch(() => {
+                // Error already surfaced via toast by the shared api client.
             });
         },
         fetchImageList() {
             // Fetch list of available images
-            const path = `${import.meta.env.VITE_BACKEND_URI}/api/sanity/fetch_image_list?project=${this.project}&vertebra=${this.vertebra}`;
-            axios.post(path)
+            api.post('/api/sanity/fetch_image_list', null, { params: { project: this.project, vertebra: this.vertebra } })
                 .then((res) => {
                 this.idList = res.data.id_list;
                 this.GetSpine();
                 this.getQCReport();
             })
-                .catch((err) => {
-                console.error(err);
+                .catch(() => {
+                // Error already surfaced via toast by the shared api client.
             });
         },
         NextImage() {
@@ -130,8 +126,7 @@ export default {
                 window.alert('That was the last image!');
                 return;
             }
-            const path = `${import.meta.env.VITE_BACKEND_URI}/api/sanity/fetch_image_by_id?project=${this.project}&_id=${_id}&vertebra=${this.vertebra}`;
-            axios.post(path)
+            api.post('/api/sanity/fetch_image_by_id', null, { params: { project: this.project, _id: _id, vertebra: this.vertebra } })
                 .then((res) => {
                 this.src = `data:image/png;base64, ` + res.data.image;
                 this.patientID = res.data.patient_id;
@@ -148,11 +143,11 @@ export default {
                 } else {
                     this.showSpineSanity = true;
                 }
-                
-                
+
+
             })
-                .catch((err) => {
-                console.error(err);
+                .catch(() => {
+                // Error already surfaced via toast by the shared api client.
             });
         },
         PreviousImage() {
@@ -167,8 +162,7 @@ export default {
                 window.alert("You've reached the start");
                 return;
             }
-            const path = `${import.meta.env.VITE_BACKEND_URI}/api/sanity/fetch_image_by_id?project=${this.project}&_id=${_id}&vertebra=${this.vertebra}`;
-            axios.post(path)
+            api.post('/api/sanity/fetch_image_by_id', null, { params: { project: this.project, _id: _id, vertebra: this.vertebra } })
                 .then((res) => {
                 this.src = `data:image/png;base64, ` + res.data.image;
                 this.patientID = res.data.patient_id;
@@ -181,47 +175,42 @@ export default {
                 this.GetSpine();
                 this.getQCReport();
             })
-                .catch((err) => {
-                console.error(err);
+                .catch(() => {
+                // Error already surfaced via toast by the shared api client.
             });
         },
         PassQA() {
             // Record QA pass
             const _id = this.idList[this.idx];
-            const path = `${import.meta.env.VITE_BACKEND_URI}/api/sanity/pass_qa?project=${this.project}&_id=${_id}&vertebra=${this.vertebra}`;
-            axios.post(path)
-                .then((res) => {
-                console.log(res.data.message);
+            api.post('/api/sanity/pass_qa', null, { params: { project: this.project, _id: _id, vertebra: this.vertebra } })
+                .then(() => {
                 this.NextImage();
             })
-                .catch((err) => {
-                console.error(err);
+                .catch(() => {
+                // Error already surfaced via toast by the shared api client.
             });
         },
         FailQA(mode) {
             // Record QA fail (both segmentation and labelling fail)
             const _id = this.idList[this.idx];
-            const path = `${import.meta.env.VITE_BACKEND_URI}/api/sanity/fail_qa?project=${this.project}&_id=${_id}&mode=${mode}&vertebra=${this.vertebra}`;
-            axios.post(path)
-                .then((res) => {
-                console.log(res.data.message);
+            api.post('/api/sanity/fail_qa', null, { params: { project: this.project, _id: _id, mode: mode, vertebra: this.vertebra } })
+                .then(() => {
                 this.NextImage();
             })
-                .catch((err) => {
-                console.error(err);
+                .catch(() => {
+                // Error already surfaced via toast by the shared api client.
             });
         },
         GetSpine() {
             const _id = this.idList[this.idx];
-            console.log(`Getting spine image for ${_id}`);
-            const path = `${import.meta.env.VITE_BACKEND_URI}/api/sanity/fetch_spine_by_id?project=${this.project}&_id=${_id}&vertebra=${this.vertebra}`;
-            axios.post(path)
+            api.post('/api/sanity/fetch_spine_by_id', null, { params: { project: this.project, _id: _id, vertebra: this.vertebra }, skipErrorToast: true })
                 .then((res) => {
                 this.spineSrc = `data:image/png;base64, ` + res.data.image;
                 this.disableSpine = false;
             })
-                .catch((err) => {
-                    console.log(err)
+                .catch(() => {
+                    // Not every scan has a spine QA image (e.g. segmentation-only pipelines) —
+                    // disabling the button is a normal, expected outcome here, not an error.
                     this.disableSpine = true;
             });
         },
@@ -233,17 +222,15 @@ export default {
             this.showSpineSanity = false;
         },
         getSummary(){
-            const path = `${import.meta.env.VITE_BACKEND_URI}/api/sanity/get_summary?project=${this.project}&vertebra=${this.vertebra}`;
-            axios.get(path)
+            api.get('/api/sanity/get_summary', { params: { project: this.project, vertebra: this.vertebra } })
                 .then((res) => {
                 this.num_pass = res.data.pass;
                 this.num_fail = res.data.fail;
                 this.num_todo = res.data.todo;
                 this.num_total = res.data.total;
             })
-                .catch((err) => {
-                    console.log(err)
-                
+                .catch(() => {
+                // Error already surfaced via toast by the shared api client.
             });
         },
         showFailForm() {
@@ -251,8 +238,7 @@ export default {
         },
         getQCReport(){
             const _id = this.idList[this.idx];
-            const path = `${import.meta.env.VITE_BACKEND_URI}/api/database/get_qc_report?project=${this.project}&_id=${_id}`;
-            axios.get(path)
+            api.get('/api/database/get_qc_report', { params: { project: this.project, _id: _id } })
                 .then((res) => {
                     if (!!res.data.reports) { // If not null
                         this.qc_report = res.data.reports[0][1];

@@ -1,6 +1,6 @@
 <script>
 import { FolderOpenIcon, TrashIcon, ArrowDownTrayIcon, PencilIcon } from '@heroicons/vue/24/solid'
-import axios from 'axios';
+import api from '@/api/client';
 import PopupViewer from '../popupViewer.vue';
 
 export default {
@@ -22,11 +22,8 @@ export default {
             
         },
         DownloadResults(name){
-            //const payload = {"project": name, "format": "metric", "download": "True"};
-            const path = `${import.meta.env.VITE_BACKEND_URI}/api/post_process/get_stats_for_project_v2?project=${name}&download=True`;
-            axios({url: path, method: "GET", responseType: 'blob'})
+            api({url: '/api/post_process/get_stats_for_project_v2', method: "GET", params: {project: name, download: "True"}, responseType: 'blob'})
             .then((response) => {
-                console.log(response);
                 // create file link in browser's memory
                 const href = URL.createObjectURL(response.data);
 
@@ -41,28 +38,24 @@ export default {
                 document.body.removeChild(link);
                 URL.revokeObjectURL(href);
             })
-            
+            .catch(() => {
+                // Error already surfaced via toast by the shared api client.
+            })
         },
         RenameProject(){
-            console.log(`Changing project ${this.projectName} to ${this.newProjectName}`)
-            console.log(typeof(this.newProjectName))
-            if (this.isValid(this.newProjectName)) {
-                console.log("Valid input")
-            } else {
+            if (!this.isValid(this.newProjectName)) {
                 window.alert("Invalid input: no spaces or special chars allowed");
+                return;
             }
 
             const payload = {'_id': '*', 'current_project': this.projectName, 'new_project': this.newProjectName}
-            const path = `${import.meta.env.VITE_BACKEND_URI}/api/database/change_project`
-            console.log(`Sending ${payload} to ${path}`)
-            axios.post(path, payload, {headers: {'Content-Type': 'application/json',}})
-            .then((res) => {
-                console.log(res)
+            api.post('/api/database/change_project', payload)
+            .then(() => {
                 this.renameProjectWindow = false;
                 this.$router.go(); // Reload page
             })
-            .catch((err) => {
-                console.log(err)
+            .catch(() => {
+                // Error already surfaced via toast by the shared api client.
             })
 
 

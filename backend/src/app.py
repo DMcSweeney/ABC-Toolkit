@@ -5,10 +5,11 @@ import os
 import logging
 from logging.handlers import TimedRotatingFileHandler
 
-from flask import Flask
+from flask import Flask, jsonify
 from flask_cors import CORS
 from flask_pymongo import PyMongo
 from redis import Redis
+from werkzeug.exceptions import HTTPException
 import rq_dashboard
 
 import main
@@ -71,6 +72,30 @@ app.add_url_rule('/', endpoint='main')
 #     init_models(db)
 
 CORS(app, resources={r"/api/*": {"origins": "*"}}) # Allow Cross-origin requests~
+
+# Registering these handlers means Flask returns them instead of Werkzeug's interactive
+# debugger page, even with FLASK_DEBUG=True — tracebacks go to the server logs instead of
+# leaking to API callers. The dev-container auto-reload behaviour is unaffected, since that's
+# driven by the `flask run` CLI/reloader, not by whether exceptions are handled here.
+@app.errorhandler(HTTPException)
+def handle_http_exception(e):
+    return jsonify({"error": e.description}), e.code
+
+@app.errorhandler(ValueError)
+def handle_value_error(e):
+    logger.warning(f"Bad request: {e}")
+    return jsonify({"error": str(e)}), 400
+
+@app.errorhandler(AssertionError)
+def handle_assertion_error(e):
+    logger.warning(f"Bad request: {e}")
+    return jsonify({"error": str(e)}), 400
+
+@app.errorhandler(Exception)
+def handle_unexpected_error(e):
+    logger.exception("Unhandled exception")
+    return jsonify({"error": "Internal server error. Check the backend logs for details."}), 500
+
 logger.info("App started")
 
 
