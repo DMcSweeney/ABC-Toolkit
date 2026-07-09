@@ -158,7 +158,7 @@ services:
       - MONGO_INITDB_ROOT_PASSWORD=${MONGO_INITDB_ROOT_PASSWORD}
       - MONGO_INITDB_DATABASE=${MONGO_INITDB_DATABASE}
     deploy:
-      replicas: 1
+      replicas: ${NUM_GPU_WORKERS}
       resources:
         reservations:
           devices:
@@ -190,7 +190,7 @@ services:
       - MONGO_INITDB_ROOT_PASSWORD=${MONGO_INITDB_ROOT_PASSWORD}
       - MONGO_INITDB_DATABASE=${MONGO_INITDB_DATABASE}
     deploy:
-      replicas: 2
+      replicas: ${NUM_CPU_WORKERS}
     depends_on:
       - redis
 
