@@ -2,7 +2,7 @@
 // QA page organised by patient
 // Should be able to access all predictions for a patient from here 
 // Add patientID arg in path to allow for searching specific patients
-import axios from 'axios';
+import api from '@/api/client';
 import popupViewer from '../popupViewer.vue';
 import failureForm from './FailureForm_v2.vue';
 import Multiselect from 'vue-multiselect';
@@ -45,13 +45,12 @@ export default {
         async fetchPatientList() {
             // Get JSON object of ALL patients and their images 
             // TODO only fetch patient IDs? then make another call to fetch UIDs for that patient? Currently, might take up a lot of mem. on big projects...
-            const path = `${import.meta.env.VITE_BACKEND_URI}/api/patient_qa/fetch_patient_list?project=${this.project}&vertebra=${this.vertebra}`;
-            await axios.get(path)
+            await api.get('/api/patient_qa/fetch_patient_list', { params: { project: this.project, vertebra: this.vertebra } })
                 .then((res) => {
                 this.imageObj = res.data.image_dict;
                 this.patientList = Object.keys(this.imageObj);
                 if (Object.keys(this.$route.params.patient_id).length !== 0) {
-                    // if patient id in query string 
+                    // if patient id in query string
                     this.currentPID = this.$route.params.patient_id;
                 } else{
                     // Filter based on TODO/success/fail and select a random patient
@@ -60,16 +59,15 @@ export default {
                 }
                 this.idList = Object.keys(this.imageObj[this.currentPID]);
             })
-                .catch((err) => {
-                console.error(err);
+                .catch(() => {
+                // Error already surfaced via toast by the shared api client.
             });
 
             // Also fetch the statuses linked with patient IDs and use these to filter search
             this.fetchFilteredList();
         },
         fetchFilteredList(){
-            const path = `${import.meta.env.VITE_BACKEND_URI}/api/patient_qa/get_filtered_patient_list?project=${this.project}&vertebra=${this.vertebra}`;
-            axios.get(path)
+            api.get('/api/patient_qa/get_filtered_patient_list', { params: { project: this.project, vertebra: this.vertebra } })
                 .then((res) => {
                     this.statusObj= res.data.status_dict;
                     // If to-do list is not empty, select a patient at random
@@ -84,19 +82,18 @@ export default {
                         this.currentPID = this.statusObj['passed'][this.patientIdx]; // Select a random patient to show first
                     }
                 })
-                .catch((err) => {
-                    console.error(err);
+                .catch(() => {
+                    // Error already surfaced via toast by the shared api client.
             });
         },
         GetQAImage(_id) {
             // Wait for patient list to run, then request the relevant image, given the _id
-            
+
             this.current_uuid = _id;
             this.GetSpine(_id)
             this.getQCReport(_id)
             this.getImagePassRate();
-            const path = `${import.meta.env.VITE_BACKEND_URI}/api/patient_qa/fetch_image_by_id?project=${this.project}&_id=${_id}&vertebra=${this.vertebra}`;
-            axios.get(path)
+            api.get('/api/patient_qa/fetch_image_by_id', { params: { project: this.project, _id: _id, vertebra: this.vertebra } })
                 .then((res) => {
                 this.QAsrc = `data:image/png;base64, ` + res.data.image;
                 this.status = res.data.status;
@@ -104,8 +101,8 @@ export default {
                 this.acquisition_date = res.data.acquisition_date;
                 this.compartments = res.data.compartments;
             })
-                .catch((err) => {
-                console.error(err);
+                .catch(() => {
+                // Error already surfaced via toast by the shared api client.
             });
         },
         NextImage(){
@@ -160,22 +157,21 @@ export default {
             this.GetQAImage(this.idList[0]);
         },
         GetSpine(_id) {
-            // Get the spine QC image and display            
-            const path = `${import.meta.env.VITE_BACKEND_URI}/api/sanity/fetch_spine_by_id?project=${this.project}&_id=${_id}&vertebra=${this.vertebra}`;
-            axios.post(path)
+            // Get the spine QC image and display
+            api.post('/api/sanity/fetch_spine_by_id', null, { params: { project: this.project, _id: _id, vertebra: this.vertebra }, skipErrorToast: true })
                 .then((res) => {
                 this.spineSrc = `data:image/png;base64, ` + res.data.image;
                 this.disableSpine = false;
             })
-                .catch((err) => {
-                    console.log(err)
+                .catch(() => {
+                    // Not every scan has a spine QA image (e.g. segmentation-only pipelines) —
+                    // disabling the button is a normal, expected outcome here, not an error.
                     this.disableSpine = true;
             });
         },
         getQCReport(_id){
             // Get the spine QC image and display
-            const path = `${import.meta.env.VITE_BACKEND_URI}/api/database/get_qc_report?project=${this.project}&_id=${_id}`;
-            axios.get(path)
+            api.get('/api/database/get_qc_report', { params: { project: this.project, _id: _id } })
                 .then((res) => {
                     if (!!res.data.reports) { // If not null
                         this.qc_report = res.data.reports[0][1][this.vertebra];
@@ -183,19 +179,17 @@ export default {
                     } else {
                         this.qc_report = null;
                         this.qcReady = true;
-                    }        
+                    }
                 })
         },
         PassQA() {
             // Record QA pass
-            const path = `${import.meta.env.VITE_BACKEND_URI}/api/patient_qa/pass_qa?project=${this.project}&_id=${this.current_uuid}&vertebra=${this.vertebra}`;
-            axios.post(path)
-                .then((res) => {
-                console.log(res.data.message);
+            api.post('/api/patient_qa/pass_qa', null, { params: { project: this.project, _id: this.current_uuid, vertebra: this.vertebra } })
+                .then(() => {
                 this.NextImage();
             })
-                .catch((err) => {
-                console.error(err);
+                .catch(() => {
+                // Error already surfaced via toast by the shared api client.
             });
         },
         ShowSpine() {
@@ -241,15 +235,14 @@ export default {
         },
         getImagePassRate(){
             // Method for querying current image pass rate -- should be done everytime a new image is displayed
-            const url = `${import.meta.env.VITE_BACKEND_URI}/api/patient_qa/get_image_pass_rate?project=${this.project}&vertebra=${this.vertebra}`;
-            axios.get(url)
+            api.get('/api/patient_qa/get_image_pass_rate', { params: { project: this.project, vertebra: this.vertebra } })
             .then((res) => {
                 this.total_images = res.data.total;
                 this.passed_images = res.data.passed;
                 this.pass_rate = res.data.pass_rate;
             })
-            .catch((err) => {
-                console.log(err);
+            .catch(() => {
+                // Error already surfaced via toast by the shared api client.
             })
         }
     },

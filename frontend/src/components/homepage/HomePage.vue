@@ -1,5 +1,5 @@
 <script>
-import axios from 'axios';
+import api from '@/api/client';
 import ProjectEntry from './ProjectEntry.vue';
 import popupViewer from '../popupViewer.vue';
 import { FolderPlusIcon } from '@heroicons/vue/24/solid'
@@ -16,13 +16,11 @@ export default {
     },
     methods: {
         fetchProjectList() {
-            console.log("Fetching projects");
-            const url = `${import.meta.env.VITE_BACKEND_URI}/api/database/get_project_info`
-            axios.get(url)
+            api.get('/api/database/get_project_info')
                 .then((res) => {
                     this.projectInfo = res.data.data;
-                }).catch((err) => {
-                    console.error(err);
+                }).catch(() => {
+                    // Error already surfaced via toast by the shared api client.
                 })
         },
         SubmitJob(){

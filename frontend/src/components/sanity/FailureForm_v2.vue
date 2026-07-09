@@ -1,6 +1,6 @@
 <script>
 //  Failure form in vue.js
-import axios from 'axios';
+import api from '@/api/client';
 import Multiselect from 'vue-multiselect';
 
 function initialState() {
@@ -34,18 +34,15 @@ export default {
                 'altInput': this.altInput,
                 'notes': this.notes
             }
-            console.log(payload)
-            const url = `${import.meta.env.VITE_BACKEND_URI}/api/patient_qa/fail_qa_report?_id=${this._id}&project=${this.project}&vertebra=${this.$parent.vertebra}`
             // Send post request to server
-            axios.post(url, payload)
-            .then((res) => {
-                console.log(res.data);
+            api.post('/api/patient_qa/fail_qa_report', payload, { params: { _id: this._id, project: this.project, vertebra: this.$parent.vertebra } })
+            .then(() => {
                 // Clear data and move to next patient
                 Object.assign(this.$data, initialState());
                 this.$parent.NextImage();
             })
-            .catch((err) => {
-                console.log(err);
+            .catch(() => {
+                // Error already surfaced via toast by the shared api client.
             })
         },
         updateQCReport(){

@@ -1,5 +1,5 @@
 <script>
-import axios from 'axios';
+import api from '@/api/client';
 import moment from 'moment';
 import Plotly from 'plotly.js-dist-min';
 
@@ -38,53 +38,48 @@ export default {
                 alert("Assessment date can't be in the future");
                 return false;
             }
-            // If passes checks, insert into database 
-            const path = `${import.meta.env.VITE_BACKEND_URI}/api/weights/post_weight?patient_id=${this.patientID}&weight=${this.weight}&date=${this.date}`
-            axios.post(path)
-                .then(async (res) => {
+            // If passes checks, insert into database
+            api.post('/api/weights/post_weight', null, { params: { patient_id: this.patientID, weight: this.weight, date: this.date } })
+                .then(async () => {
                     await this.fetchWeights();
                     this.plotChange(this.weight_dates, this.weight_changes);
                 })
-                .catch((err) => {
-                    alert(err);
+                .catch(() => {
+                    // Error already surfaced via toast by the shared api client.
                 })
         },
-        DeleteWeight(date){            
-            const path = `${import.meta.env.VITE_BACKEND_URI}/api/weights/delete_weight?_id=${this.patientID}&date=${date}`
-            axios.post(path)
-            .then(async (res) => {
-                console.log('Successfully deleted entry');
+        DeleteWeight(date){
+            api.post('/api/weights/delete_weight', null, { params: { _id: this.patientID, date: date } })
+            .then(async () => {
                 await this.fetchWeights();
                 this.plotChange(this.weight_dates, this.weight_changes);
-            
-            })  
-            .catch((err) => {
-                alert(err);
-                return false;
+
+            })
+            .catch(() => {
+                // Error already surfaced via toast by the shared api client.
             })
 
         },
         fetchWeights(){
-            const path = `${import.meta.env.VITE_BACKEND_URI}/api/weights/fetch_weights?_id=${this.patientID}`
-            return axios.get(path)
+            return api.get('/api/weights/fetch_weights', { params: { _id: this.patientID } })
             .then((res) => {
                 this.weights = res.data.data;
                 for (var item of this.weights) {
                     this.weight_dates.push(item[0])
                     this.weight_changes.push(Number(item[2]))
                 }
-                 
+
             })
-            .catch((err) => {
-                console.log(err);
-                alert(err);
+            .catch(() => {
+                // Error already surfaced via toast by the shared api client.
             })
 
         },
         fetchBodyComp(){
             // Fetch body comp metrics from segmented scans
-            const path = `${import.meta.env.VITE_BACKEND_URI}/api/post_process/get_stats_for_patient?project=${this.$route.params.project}&patient_id=${this.patientID}&vertebra=${this.vertebra}&compartment=${this.compartment}`
-            return axios.get(path)
+            return api.get('/api/post_process/get_stats_for_patient', { params: {
+                project: this.$route.params.project, patient_id: this.patientID, vertebra: this.vertebra, compartment: this.compartment
+            } })
             .then((res) => {
                 this.bodyComp = res.data.data;
                 for (var item of this.bodyComp) {
@@ -92,8 +87,8 @@ export default {
                     this.bodyComp_changes.push(item[1])
                 }
             })
-            .catch((err) => {
-                alert(err);
+            .catch(() => {
+                // Error already surfaced via toast by the shared api client.
             })
         },
         async fetchData(){
@@ -137,8 +132,8 @@ export default {
     await this.fetchData()
     .then(() => {
         this.plotChange();
-    }).catch((err) => {
-        alert(err);
+    }).catch(() => {
+        // Error already surfaced via toast by the shared api client.
     })
     },
     mounted(){

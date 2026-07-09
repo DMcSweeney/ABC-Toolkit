@@ -35,7 +35,7 @@ services:
       - 5001:5001
     volumes:
       - ${INPUT_DIR}:/data/inputs:ro
-      - ${INPUT_DIR}:/data/outputs
+      - ${OUTPUT_DIR}:/data/outputs
       - ./backend/src:/src
       - ${INPUT_DIR}/logs:/var/log
       - ./ssl/cert.key:/ssl/cert.key:ro
@@ -78,7 +78,7 @@ services:
     tty: true
     stdin_open: true
     ports:
-      - ${CONQUEST_FRONTED_PORT}:80
+      - ${CONQUEST_FRONTEND_PORT}:80
       - ${CONQUEST_DATA_PORT}:5678
     volumes:
       - ./conquest/trigger.lua:/Conquest-DICOM-Server/lua/trigger.lua

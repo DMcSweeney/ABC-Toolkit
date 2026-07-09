@@ -1,5 +1,5 @@
 <script>
-import axios from 'axios';
+import api from '@/api/client';
 import PatientTable from './PatientTable.vue';
 
 export default {
@@ -13,12 +13,10 @@ export default {
     },
     methods: {
         FetchPatients(){
-            const url = `${import.meta.env.VITE_BACKEND_URI}/api/database/get_patients_in_project?project=${this.project}`
-            axios.get(url).then( (res) => {
-                
+            api.get('/api/database/get_patients_in_project', { params: { project: this.project } }).then( (res) => {
                 this.patients=res.data.data
-            }).catch((err) => {
-                console.log(err);
+            }).catch(() => {
+                // Error already surfaced via toast by the shared api client.
             })
 
         }

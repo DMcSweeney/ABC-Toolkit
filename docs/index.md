@@ -1,7 +1,7 @@
 # Automatic Body Composition (ABC) toolkit
 
 
-[**Paper**]() | [**Getting started**](#getting_started) | [**Using ABC**](#using_abc)  | [**Contribute**](#contribute) | [**Citation**](#citation)
+[**Paper**]() | [**Getting started**](#getting_started) | [**Using ABC**](#using_abc) | [**API Reference**](api-reference.md) | [**Contribute**](#contribute) | [**Citation**](#citation)
 
 
 
@@ -16,7 +16,7 @@ Several segmentation models are available, spanning from neck to thigh. Most mod
 
 ## Requirements
 - [Docker](https://www.docker.com/get-started/). [Here](https://docs.docker.com/engine/install/ubuntu/) is a useful guide for Ubuntu.
-- [nvidia-container-toolkit](https://docs.nvidia.com/datacenter/cloud-native/container-toolkit/latest/install-guide.html). GPU is only needed for vertebral labelling; segmentation is performed by the CPU. Vertebral labelling can be bypassed (see **here**).
+- [nvidia-container-toolkit](https://docs.nvidia.com/datacenter/cloud-native/container-toolkit/latest/install-guide.html). GPU is only needed for vertebral labelling; segmentation is performed by the CPU. To skip vertebral labelling (and the GPU requirement) entirely, don't call `/api/jobs/infer/spine` — pass `slice_number` explicitly to `/api/jobs/infer/segment` instead, which is otherwise looked up from a prior labelling job. See [`slice_number` in the API Reference](api-reference.md#jobs--apijobs).
 
 On Windows, [Windows Subsystem for Linux](https://learn.microsoft.com/en-us/windows/wsl/install) is recommended. This isn't required but ABC hasn't been tested without it and the commands below will be slightly different.
 
@@ -33,9 +33,18 @@ $ docker compose up
 ```
 
 ### .env variables
-! -- TODO
+Every variable is documented inline in [.env-default](https://github.com/DMcSweeney/ABC-Toolkit/blob/master/.env-default) — copy it to `.env` and read the comments before changing anything. The two you're most likely to need to touch:
+- **`HOST_IP`**: defaults to `localhost`, which only works if you're opening the frontend on the same machine running `docker compose`. Set it to that machine's real IP/hostname for a remote/server deployment.
+- **`INPUT_DIR` / `OUTPUT_DIR`**: host folders mounted into the containers as `/data/inputs` and `/data/outputs`. See [Using ABC](#using_abc) below for how host paths map to the `/data/inputs/...` paths your requests actually use.
 
-## Basic Usage
+Everything else (ports, Mongo credentials, `FLASK_DEBUG`) has a working default for local/single-machine use — change the credentials before deploying anywhere the Mongo or mongo-express ports might be reachable by anyone else.
+
+## Using ABC
+<a name="using_abc"></a>
+
+Tasks are performed by making HTTP requests to the backend — see the [**API Reference**](api-reference.md) for every endpoint, or [examples/api/](https://github.com/DMcSweeney/ABC-Toolkit/tree/master/examples/api) and [examples/python/](https://github.com/DMcSweeney/ABC-Toolkit/tree/master/examples/python) for runnable examples. The frontend's **Submit Jobs** page (`/submit_job`) also covers the common case directly — either one scan at a time, or a CSV batch of scans — if you'd rather not script it.
+
+> **Important:** every request that references a scan (`input_path` and similar) must use the path **as seen inside the container**, i.e. starting with `/data/inputs/...` — not the path on your host machine. `INPUT_DIR`/`OUTPUT_DIR` in `.env` control what host folder gets mounted to `/data/inputs`/`/data/outputs`, but requests always address files by their in-container path. The script below shows this mapping in practice.
 
 Below is a basic python script for submitting jobs to the toolkit. 
 This assumes `INPUT_DIR =/data/data_for_my_first_project/` and `BACKEND_PORT=5001`.
@@ -93,10 +102,14 @@ if __name__ == '__main__':
 
 
 ## System Architecture
-Need an explanation of the system architecture.
-What endpoint point to what, where things can be found, etc...
 
 <img src="ABC-system-architecture.png"/>
+
+There are two ways to get images into ABC (left side of the diagram, blue box): **scripting mode**, where you (or a script) send HTTP requests directly — the `curl`/Python examples throughout this page — or **real-time mode**, where a clinical PACS or DICOM store sends images straight to the built-in Conquest DICOM server, which POSTs a trigger to the backend as each series arrives (`/api/conquest/handle_trigger`, invoked automatically — you don't call this yourself).
+
+The **Client** box is the Vue frontend (default `https://localhost:5000`). 
+
+For the full set of endpoints behind each of these, see the [**API Reference**](api-reference.md).
 
 ### Available segmentation models  <a name="available_models"></a>
 

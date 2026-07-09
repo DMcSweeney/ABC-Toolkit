@@ -1,5 +1,5 @@
 <script>
-import axios from 'axios';
+import api from '@/api/client';
 import QASummaryEntry from './QASummaryEntry.vue';
 
 export default {
@@ -9,30 +9,29 @@ export default {
             project:this.$route.params.project,
             levels: null,
             qc_summary: Object,
-            ready: false
+            ready: false,
+            loadError: false,
         }
     },
     methods: {
         async FetchPatients(){
-            const url = `${import.meta.env.VITE_BACKEND_URI}/api/database/get_levels_to_QA?project=${this.project}`
-            await axios.get(url).then( (res) => {
+            await api.get('/api/database/get_levels_to_QA', { params: { project: this.project } }).then( (res) => {
                 this.levels=res.data.data
-            }).catch((err) => {
-                console.log(err);
+            }).catch(() => {
+                // Error already surfaced via toast by the shared api client.
+                this.loadError = true;
             })
 
         },
         async getSummary(vertebra){
-            const path = `${import.meta.env.VITE_BACKEND_URI}/api/sanity/get_summary?project=${this.project}&vertebra=${vertebra}`;
-            await axios.get(path)
+            await api.get('/api/sanity/get_summary', { params: { project: this.project, vertebra: vertebra } })
                 .then((res) => {
                 // Fails are reported as "both", "segmentation" or "spine" failures, need to sum them all
                 //var fails = Object.values(res.data.fail).reduce((acc, val) => acc + val, 0);
                 this.qc_summary[vertebra] = {'pass': res.data.pass, 'fail':res.data.fail, 'todo': res.data.todo, 'total': res.data.total};
             })
-                .catch((err) => {
-                console.log(`${vertebra} -- ${err}`)
-                
+                .catch(() => {
+                this.loadError = true;
             });
         },
         async getAllSummaries() {
@@ -47,10 +46,12 @@ export default {
     },
     async created() {
         await this.FetchPatients();
-        await this.getAllSummaries();
+        if (this.levels) {
+            await this.getAllSummaries();
+        }
         this.ready=true;
-        
-    },      
+
+    },
     props: [],
     components: {QASummaryEntry}
 }
@@ -90,7 +91,15 @@ export default {
 
 </div> -->
 
-<div v-if="ready" class="m-auto w-2/3 p-3">
+<div v-if="!ready" class="m-auto w-2/3 p-3 text-center text-stone-400 text-xl">
+    Loading...
+</div>
+
+<div v-else-if="loadError" class="m-auto w-2/3 p-3 text-center text-red-400 text-xl">
+    Couldn't load the QA summary for this project. See the error notification for details, or try reloading the page.
+</div>
+
+<div v-else-if="ready" class="m-auto w-2/3 p-3">
         <div class="m-auto w-5/6 h-8 text-stone-200 text-xl font-bold rounded flex justify-center">
             <div class="align-start content-center"> Level </div>
             <div class="content-center mx-auto text-green-500"> Passed </div>
