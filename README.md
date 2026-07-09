@@ -8,15 +8,16 @@
 [**Paper**]()
 | [**Getting started**](#getting_started)
 | [**Using ABC**](#using_abc)
+| [**API Reference**](docs/api-reference.md)
 | [**Docs**](https://dmcsweeney.github.io/ABC-Toolkit/)
 | [**Contribute**](#contribute)
 | [**Citation**](#citation)
 
-The ABC-Toolkit is a web-app for large-scale body composition analyses of CT scans.
+The ABC-Toolkit is a web-app for large-scale body composition analyses of CT, MR, and cone-beam CT (CBCT) scans.
 
 A [DICOM server](https://github.com/marcelvanherk/Conquest-DICOM-Server) is built-in so images can be sent directly from clinical PACS and automatically processed.   
 
-An exhaustive list of features is available here.
+See the [full documentation](https://dmcsweeney.github.io/ABC-Toolkit/) for the complete feature list, system architecture, and available segmentation models.
 
 ## Requirements
 - [Docker](https://www.docker.com/get-started/). [Here](https://docs.docker.com/engine/install/ubuntu/) is a useful guide for Ubuntu.
@@ -36,11 +37,17 @@ $ # EDIT .env;
 $ docker compose up
 ```
 
+Every variable in `.env` is documented inline in [.env-default](.env-default) — most are fine at their default for local use. The one you're most likely to need to change is `HOST_IP` (defaults to `localhost`, which only works if you're opening the frontend on the same machine running `docker compose`).
+
+Once the stack is up, the frontend is at `https://<HOST_IP>:<FRONTEND_PORT>` (default `https://localhost:5000`) and the API at `https://<HOST_IP>:<BACKEND_PORT>` (default `https://localhost:5001`) — both self-signed HTTPS, so your browser/HTTP client will warn about the certificate (see [ssl/README.md](ssl/README.md)).
+
 ## Using ABC
 <a name="using_abc"></a>
 Tasks are performed by making HTTP requests to pre-specified endpoints. All endpoints have an associated example in the `examples/api` folder, and a full argument-by-argument reference is available in [docs/api-reference.md](docs/api-reference.md).
 
-You can do this whichever way suits you best: through the command-line with tools like `curl`, from python scripts with the [requests library](https://pypi.org/project/requests/), from javascript with [axios](https://axios-http.com/docs/intro) or use a desktop app like [Postman](https://www.postman.com/). Some example python scripts are available in `examples/scripts/python`. 
+You can do this whichever way suits you best: through the command-line with tools like `curl`, from python scripts with the [requests library](https://pypi.org/project/requests/), from javascript with [axios](https://axios-http.com/docs/intro) or use a desktop app like [Postman](https://www.postman.com/). Some example python scripts are available in [examples/python/](examples/python/).
+
+If you'd rather not script it, the frontend's **Submit Jobs** page (`/submit_job`) covers the common case directly — either one scan at a time, or a CSV batch (one row per scan; see the CSV format in [docs/api-reference.md](docs/api-reference.md#jobs--apijobs)).
 
 > **Important:** every request that references a scan (`input_path` and similar) must use the path **as seen inside the container**, i.e. starting with `/data/inputs/...` — not the path on your host machine. `INPUT_DIR`/`OUTPUT_DIR` in `.env` control what host folder gets mounted to `/data/inputs`/`/data/outputs`, but requests always address files by their in-container path. For example, if `INPUT_DIR=/home/me/scans` and your scan lives at `/home/me/scans/patient_01`, the `input_path` in your request should be `/data/inputs/patient_01`. See [examples/python/submit_jobs.py](examples/python/submit_jobs.py) for a worked example of this mapping.
 
