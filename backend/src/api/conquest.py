@@ -17,6 +17,7 @@ logger = logging.getLogger(__name__)
 
 spine_url = f"https://backend:5001/api/jobs/infer/spine"
 segment_url = f"https://backend:5001/api/jobs/infer/segment"
+register_url = f"https://backend:5001/api/jobs/infer/register"
 
 
 @bp.route('/api/conquest/handle_trigger', methods=["POST"])
@@ -93,20 +94,30 @@ def handle_trigger():
         ## Assume this is a CBCT since Elekta don't manufacture CT scanners
         from app import mongo
         modality = 'CBCT'
-        ## Query database for this patient and see if they have a planning CT labelled 
+        ## Query database for this patient and see if they have a planning CT labelled
         response = mongo.db.spine.find_one({"patient_id": patient_id, "all_parameters.modality": "CT"})
         if response is None:
             raise ValueError(f"Could not find a labelled CT for patient: {patient_id}")
 
+        ## The CBCT and planning CT are acquired on different machines with no shared
+        ## coordinate frame and no exportable registration object from MOSAIQ, so a
+        ## registration job runs first to align them and correct the vertebra slice
+        ## numbers before segmentation - see abcTK/inference/register.py.
+        register_body = {"input_path": image_path, "project": 'inbox', "patient_id": patient_id,
+        'series_uuid': series_uid, "reference_scan": response['_id']}
+        logger.info(f"Submitting: {register_body}")
+        register = requests.post(register_url, json=register_body, verify=False) ## Submit registration job
+
         from abcTK.segment.model_bank import model_bank
         levels = [k for k, v in model_bank.items() if modality in v.keys()]
-        for level, position in response['prediction'].items():
-            if level not in levels: 
+        for level in response['prediction'].keys():
+            if level not in levels:
                 logger.info(f"No {modality} model for {level} vertebra, not submitting job...")
                 continue
-            segment_body = {"input_path": image_path, "project": 'inbox', "patient_id": patient_id, "slice_number":position[-1], "vertebra": level,
+            segment_body = {"input_path": image_path, "project": 'inbox', "patient_id": patient_id, "vertebra": level,
             'series_uuid': series_uid, "modality": modality,  "num_slices": "1", "resample": "True", "reference_scan": response['_id'],
               'calibrate_cbct': 'True', 'calibration_structure': 'brainstem'}
+            segment_body['depends_on'] = register.json()['job-ID'] ## Segment job waits for the registration to complete
             logger.info(f"Submitting: {segment_body}")
             segment = requests.post(segment_url, json=segment_body, verify=False) ## Submit segment job
 

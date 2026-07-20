@@ -36,6 +36,27 @@ def queue_infer_spine():
     return res
 
 
+@bp.route('/api/jobs/infer/register', methods=["POST"])
+def queue_infer_register():
+    req = request.get_json()
+
+    req['APP_OUTPUT_DIR'] = current_app.config['OUTPUT_DIR']
+    from app import redis
+    from abcTK.inference.register import infer_register
+
+    # Sent to the low queue - registration is CPU-only and shouldn't compete with segmentation
+    # jobs (default queue) for the same worker pool.
+    q = Queue('low', connection=redis, serializer=dill)
+    job = q.enqueue(infer_register, req, job_timeout=300)
+
+    res = make_response(jsonify({
+            "message": "Registration submitted",
+            "request": req,
+            "job-ID": job.id})
+            , 200)
+    return res
+
+
 @bp.route('/api/jobs/infer/segment', methods=["POST"])
 def queue_infer_segment():
     req = request.get_json()

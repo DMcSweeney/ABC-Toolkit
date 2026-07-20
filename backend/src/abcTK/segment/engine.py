@@ -687,7 +687,13 @@ class segmentationEngine():
     def read_transform(Image, transform_file):
         assert os.path.isfile(transform_file), f"Transform file ({transform_file}) does not exist."
 
-        ## Read transform
+        if transform_file.endswith('.tfm'):
+            # Written by abcTK/inference/register.py - already a plain SimpleITK transform file,
+            # in the same moving->fixed point-mapping convention this function returns for a
+            # DICOM SRO below, so it can be used as-is.
+            return sitk.ReadTransform(transform_file)
+
+        ## Read transform (DICOM Spatial Registration Object)
         ds = pydicom.dcmread(transform_file)
         transforms = []
         for elem in ds.RegistrationSequence:
