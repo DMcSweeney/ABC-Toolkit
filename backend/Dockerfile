@@ -21,7 +21,7 @@ RUN export PATH="/home/appuser/.local/bin:$PATH"
 # COPY app/* .
 # App folder is mounted from host for live updates
 RUN wget --max-redirect=20 -O /tmp/models.zip "https://www.dropbox.com/scl/fo/5sw8m4zi1w8cevlryh6cf/AESO5S2bGkB0GmkAVAeeMrE?rlkey=vqh6k2m7msy4gycd2dck9wctt&st=575p9x1v&dl=1" \
- && unzip /tmp/models.zip -d /models \
+ && unzip /tmp/models.zip -d /models -x '/' \
  && rm /tmp/models.zip
 #COPY ./models /models
 COPY ./src/ .
