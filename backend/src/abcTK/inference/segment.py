@@ -265,6 +265,20 @@ def handle_request(req):
 
         req['slice_number'] = match["prediction"][req["vertebra"]][-1]
         logger.info(f"Found slice number {req['slice_number']} for {req['vertebra']}")
+
+        ## If this scan is reusing another scan's spine labelling (e.g. a CBCT reusing its
+        ## planning CT's), the two aren't assumed to share a coordinate frame, so the slice
+        ## number above is only valid once this scan has actually been resampled onto the
+        ## reference scan's grid through a real registration transform (not the naive
+        ## same-frame resample_to_reference in engine.py). Pick up that transform, computed by
+        ## abcTK/inference/register.py, if one is available and the caller hasn't already
+        ## supplied their own.
+        if 'reference_scan' in req and req['reference_scan'] != req.get('series_uuid') and 'resample_transform' not in req:
+            registration = mongo.db.registration.find_one({"_id": req['series_uuid']})
+            if registration is None:
+                raise ValueError("Reusing another scan's labelling but no registration transform was found. Has the registration job completed?")
+            req['resample_transform'] = registration['transform_path']
+            logger.info(f"Found registration transform for {req['series_uuid']}: {req['resample_transform']}")
     else:
         ## If user provides a slice number, override the previous spine sanity image and generate a new image with only the level provided.  
         req['override_spine_sanity'] = True 
