@@ -1,7 +1,7 @@
 FROM python:3.10
 
 RUN apt-get update && apt-get upgrade -y
-RUN apt-get install gcc ffmpeg libsm6 libxext6 xvfb unzip -y
+RUN apt-get install gcc ffmpeg libsm6 libxext6 xvfb unzip patchelf -y
 
 # Mount the data directory
 VOLUME [ "/data" ]
@@ -29,5 +29,12 @@ COPY ./src/ .
 ## Install requirements
 COPY requirements.txt .
 RUN python -m pip install -r requirements.txt
+
+## onnxruntime's prebuilt extension module requests an executable stack, which some container
+## runtimes/kernels (e.g. sandboxed dev environments) refuse to grant, failing with
+## "cannot enable executable stack as shared object requires: Invalid argument" on import.
+## Clearing the ELF GNU_STACK flag is safe (this module doesn't actually need an executable
+## stack at runtime) and makes the import work everywhere.
+RUN find / -name "onnxruntime_pybind11_state*.so" -exec patchelf --clear-execstack {} \;
 
 CMD [ "flask", "run"]
