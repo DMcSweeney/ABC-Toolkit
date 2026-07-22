@@ -3,16 +3,21 @@
 // Should be able to access all predictions for a patient from here 
 // Add patientID arg in path to allow for searching specific patients
 import api from '@/api/client';
-import popupViewer from '../popupViewer.vue';
+import Modal from '../ui/Modal.vue';
+import Spinner from '../ui/Spinner.vue';
 import failureForm from './FailureForm_v2.vue';
 import Multiselect from 'vue-multiselect';
-import { Modal } from 'flowbite';
+import { useToastStore } from '@/stores/toast';
 
 export default {
     name: 'PatientPredictions',
+    setup() {
+        return { toast: useToastStore() };
+    },
     data() {
         return {
             imageObj: Object(), // Object where keys: patientIDs, values: list of ids for that patient
+            imageLoading: false, // Whether the main QA image is currently being fetched
             statusObj: {'to-do': [], 'passed': [], 'failed': []}, //Object where keys: oneof ['to-do', 'failed', 'passed'] and values are arrays of patient IDs in each category
             statusOptions: ['to-do', 'failed', 'passed'],
             filterStatus: Object(), // Object for keeping track of filtering 
@@ -97,6 +102,7 @@ export default {
             this.GetRegistration(_id)
             this.getQCReport(_id)
             this.getImagePassRate();
+            this.imageLoading = true;
             api.get('/api/patient_qa/fetch_image_by_id', { params: { project: this.project, _id: _id, vertebra: this.vertebra } })
                 .then((res) => {
                 this.QAsrc = `data:image/png;base64, ` + res.data.image;
@@ -107,6 +113,9 @@ export default {
             })
                 .catch(() => {
                 // Error already surfaced via toast by the shared api client.
+            })
+                .finally(() => {
+                this.imageLoading = false;
             });
         },
         NextImage(){
@@ -128,7 +137,7 @@ export default {
             }
             else {
                 this.patientIdx--;
-                window.alert('That was the last patient!');
+                this.toast.info('That was the last patient!');
                 return;
             }
             this.idList = Object.keys(this.imageObj[this.currentPID]);
@@ -154,7 +163,7 @@ export default {
             }
             else {
                 this.patientIdx = 0
-                window.alert("You've reached the start");
+                this.toast.info("You've reached the start");
                 return;
             }
             this.idList = Object.keys(this.imageObj[this.currentPID]);
@@ -214,15 +223,9 @@ export default {
             // Reveal spine prediction
             this.showSpineSanity = true;
         },
-        closeSpine(){
-            this.showSpineSanity = false;
-        },
         ShowRegistration() {
             // Reveal registration QC image
             this.showRegistrationSanity = true;
-        },
-        closeRegistration(){
-            this.showRegistrationSanity = false;
         },
         showFailForm() {
             this.$refs.failureFormComponent.showFailureForm = true;
@@ -239,15 +242,14 @@ export default {
             this.$router.push({name: this.$router.currentRoute.name, params: {patient_id:elem}});  
         },
         filterPatients(){
-            console.log(this.filterStatus);
-            // Where filterstatus is true 
+            // Where filterstatus is true
             var keys = Object.keys(this.filterStatus).filter(k => this.filterStatus[k]);
             var patList = Array();
             for (var key of keys) {
                 patList = patList.concat(this.statusObj[key]);
             }
             if (patList.length === 0) {
-                window.alert(`No patients meeting criteria: ${keys}`);
+                this.toast.info(`No patients meeting criteria: ${keys}`);
                 return;
             }
             // Then overwrite the patientList and reset indices
@@ -278,7 +280,7 @@ export default {
     },
     mounted() {
     },
-    components: {popupViewer, failureForm, Multiselect}
+    components: {Modal, Spinner, failureForm, Multiselect}
 }
 
 
@@ -287,24 +289,14 @@ export default {
 
 <template>
 <!-- SPINE POP-UP -->
-<popupViewer v-show="showSpineSanity" id="spine-sanity"> 
-    <button class="flex text-zinc-950 rounded bg-white h-6" @click="closeSpine();"> 
-        <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor" class="w-6 h-6">
-        <path stroke-linecap="round" stroke-linejoin="round" d="m9.75 9.75 4.5 4.5m0-4.5-4.5 4.5M21 12a9 9 0 1 1-18 0 9 9 0 0 1 18 0Z" />
-        </svg>
-        </button>
-    <img class="m-auto h-full" :src="spineSrc">
-</popupViewer>
+<Modal v-model="showSpineSanity" title="Spine QA" size="lg">
+    <img class="m-auto h-full" alt="Spine labelling QA image" :src="spineSrc">
+</Modal>
 
 <!-- REGISTRATION POP-UP -->
-<popupViewer v-show="showRegistrationSanity" id="registration-sanity">
-    <button class="flex text-zinc-950 rounded bg-white h-6" @click="closeRegistration();">
-        <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor" class="w-6 h-6">
-        <path stroke-linecap="round" stroke-linejoin="round" d="m9.75 9.75 4.5 4.5m0-4.5-4.5 4.5M21 12a9 9 0 1 1-18 0 9 9 0 0 1 18 0Z" />
-        </svg>
-        </button>
-    <img class="m-auto h-full" :src="registrationSrc">
-</popupViewer>
+<Modal v-model="showRegistrationSanity" title="Registration QA" size="lg">
+    <img class="m-auto h-full" alt="CBCT-to-CT registration QA image" :src="registrationSrc">
+</Modal>
 
     <!-- FAILURE POP-UP -->
 <div v-if=this.qcReady :key=this.qc_report>
@@ -380,8 +372,11 @@ export default {
     </ul>
     <!-- Image -->
 
-    <div class="mt-4">
-        <img :src="this.QAsrc"> 
+    <div class="relative mt-4">
+        <div v-if="imageLoading" class="absolute inset-0 flex items-center justify-center">
+            <Spinner size="lg" />
+        </div>
+        <img :src="this.QAsrc" :alt="`Segmentation QA image for patient ${currentPID}`">
     </div>
 
 </div>

@@ -1,6 +1,7 @@
 <script>
 import api from '@/api/client';
 import QASummaryEntry from './QASummaryEntry.vue';
+import LoadingState from '../ui/LoadingState.vue';
 
 export default {
     name: 'SanityHomePage',
@@ -53,47 +54,19 @@ export default {
 
     },
     props: [],
-    components: {QASummaryEntry}
+    components: {QASummaryEntry, LoadingState}
 }
 
 </script>
 
 <template>
 <div class="h-full w-full flex justify-center my-10">
-  <h1 class="text-4xl text-stone-200 font-bold">
+  <h1 class="text-4xl text-ink-primary font-bold">
     QA summary
   </h1>
 </div>
 
-
-
-<!-- <div class="h-full w-full absolute my-6 mx-auto">
-    <div class="w-3/4 h-6 text-stone-200 m-auto text-xl font-bold flex justify-center">
-        <div class="align-start content-center">
-            Level
-        </div>
-        <div class="content-center mx-auto text-green-500">
-            Passed
-        </div>
-        <div class="content-center mx-auto text-red-500">
-            Failed
-        </div>
-        <div class="content-center mx-auto text-zinc-500">
-            Todo
-        </div>
-    </div>
-    <ul v-for="level in this.levels">
-        <div class="flex justify-center m-auto">
-            <QASummaryEntry :level=level :num_pass=100 :num_fail=10 :num_todo=10>
-            </QASummaryEntry>
-        </div>
-    </ul>
-
-</div> -->
-
-<div v-if="!ready" class="m-auto w-2/3 p-3 text-center text-stone-400 text-xl">
-    Loading...
-</div>
+<LoadingState v-if="!ready" label="Loading QA summary..." />
 
 <div v-else-if="loadError" class="m-auto w-2/3 p-3 text-center text-red-400 text-xl">
     Couldn't load the QA summary for this project. See the error notification for details, or try reloading the page.
@@ -107,11 +80,11 @@ export default {
             <div class="content-center mx-auto text-zinc-500"> TODO </div>
             <div class="flex m-auto justify-end hover:text-indigo-400 mr-3"> Inspect </div>
         </div>
-        <ul v-for="[key, value] in Object.entries(this.qc_summary)">
-        <div class="flex justify-center m-auto">
+        <ul>
+        <li v-for="[key, value] in Object.entries(this.qc_summary)" :key="key" class="flex justify-center m-auto">
             <QASummaryEntry :level=key :num_pass=value.pass :num_fail=value.fail :num_todo=value.todo>
             </QASummaryEntry>
-        </div>
+        </li>
     </ul>
 
 </div>

@@ -1,10 +1,16 @@
 <script>
-import axios from 'axios';
+import api from '@/api/client';
 import moment from 'moment';
 import Plotly from 'plotly.js-dist-min';
+import { useToastStore } from '@/stores/toast';
+import Button from '../ui/Button.vue';
 
 export default {
     name: 'PatientPage',
+    components: { Button },
+    setup() {
+        return { toast: useToastStore() };
+    },
     data() {
         return {
             showBodyCompTrend: true,
@@ -24,66 +30,61 @@ export default {
     },
     methods: {
         addWeight(){
-            console.log(`Submitting ${this.weight} & ${this.date}`)
             const today = new Date()
             today.setHours(0, 0, 0, 0);
 
             if (this.weight < 0) {
-                alert("Weight can't be negative");
+                this.toast.error("Weight can't be negative");
                 return false;
             }
 
             if (moment(this.date) > today) {
-                alert("Assessment date can't be in the future");
+                this.toast.error("Assessment date can't be in the future");
                 return false;
             }
-            // If passes checks, insert into database 
-            const path = `${import.meta.env.VITE_BACKEND_URI}/api/weights/post_weight?patient_id=${this.patientID}&weight=${this.weight}&date=${this.date}`
-            axios.post(path)
-                .then(async (res) => {
+            // If passes checks, insert into database
+            api.post('/api/weights/post_weight', null, {
+                params: { patient_id: this.patientID, weight: this.weight, date: this.date }
+            })
+                .then(async () => {
                     await this.fetchWeights();
                     this.plotChange(this.weight_dates, this.weight_changes);
                 })
-                .catch((err) => {
-                    alert(err);
+                .catch(() => {
+                    // Error already surfaced via toast by the shared api client.
                 })
         },
-        DeleteWeight(date){            
-            const path = `${import.meta.env.VITE_BACKEND_URI}/api/weights/delete_weight?_id=${this.patientID}&date=${date}`
-            axios.post(path)
-            .then(async (res) => {
-                console.log('Successfully deleted entry');
+        DeleteWeight(date){
+            api.post('/api/weights/delete_weight', null, { params: { _id: this.patientID, date: date } })
+            .then(async () => {
                 await this.fetchWeights();
                 this.plotChange(this.weight_dates, this.weight_changes);
-            
-            })  
-            .catch((err) => {
-                alert(err);
-                return false;
+            })
+            .catch(() => {
+                // Error already surfaced via toast by the shared api client.
             })
 
         },
         fetchWeights(){
-            const path = `${import.meta.env.VITE_BACKEND_URI}/api/weights/fetch_weights?_id=${this.patientID}`
-            return axios.get(path)
+            return api.get('/api/weights/fetch_weights', { params: { _id: this.patientID } })
             .then((res) => {
                 this.weights = res.data.data;
                 for (var item of this.weights) {
                     this.weight_dates.push(item[0])
                     this.weight_changes.push(Number(item[2]))
                 }
-                 
+
             })
-            .catch((err) => {
-                console.log(err);
-                alert(err);
+            .catch(() => {
+                // Error already surfaced via toast by the shared api client.
             })
 
         },
         fetchBodyComp(){
             // Fetch body comp metrics from segmented scans
-            const path = `${import.meta.env.VITE_BACKEND_URI}/api/post_process/get_stats_for_patient?project=${this.$route.params.project}&patient_id=${this.patientID}&vertebra=${this.vertebra}&compartment=${this.compartment}`
-            return axios.get(path)
+            return api.get('/api/post_process/get_stats_for_patient', {
+                params: { project: this.$route.params.project, patient_id: this.patientID, vertebra: this.vertebra, compartment: this.compartment }
+            })
             .then((res) => {
                 this.bodyComp = res.data.data;
                 for (var item of this.bodyComp) {
@@ -91,14 +92,14 @@ export default {
                     this.bodyComp_changes.push(item[1])
                 }
             })
-            .catch((err) => {
-                alert(err);
+            .catch(() => {
+                // Error already surfaced via toast by the shared api client.
             })
         },
         async fetchData(){
             await this.fetchBodyComp();
             await this.fetchWeights();
-            return 
+            return
             //  Should return promise
         },
         plotChange(){
@@ -139,12 +140,7 @@ export default {
     await this.fetchData()
     .then(() => {
         this.plotChange();
-    }).catch((err) => {
-        alert(err);
     })
-    },
-    mounted(){
-        
     },
     props: [],
 }
@@ -154,28 +150,25 @@ export default {
 <template>
 
 <div class=" flex justify-center items-center w-full p-8 content-center mx-auto">
-    <div class="inline-block grow text-indigo-200 text-xl flex-1"> Patient ID: 
-        <div class="inline-block text-stone-200">
+    <div class="inline-block grow text-brand-300 text-xl flex-1"> Patient ID:
+        <div class="inline-block text-ink-primary">
             {{ patientID }}
         </div>
     </div>
     <div class="align-right">
-        <button @click="viewPredictions();"class="text-xl rounded ml-3 p-2 bg-stone-200 text-zinc-950 border-white hover:border hover:border-blue hover:text-blue">
+        <Button variant="secondary" @click="viewPredictions();">
              View predictions
-        </button>
-    </div>  
+        </Button>
+    </div>
 </div>
 <div>
     <!-- Add + delete weight -->
     <div class="relative flex items-center w-full p-8 content-center mx-auto">
-        <div class="inline-block grow text-indigo-200 text-l flex-1"> Add weight (in kg) and assessment date : 
-            <form @submit.prevent="addWeight();"> 
-            <input v-model=this.weight step="any" type="number" class="bg-stone-200 border-gray-300 text-zinc-900 text-sm" required/>
-            <input v-model=this.date type="date" class="ml-3 bg-stone-200 border-gray-300 text-zinc-900 text-sm" required/>
-            <button type="submit"
-            class="text-l rounded ml-3 p-2 text-stone-200 border-white hover:border hover:border-blue hover:text-blue bg-indigo-700"
-             value="Add entry"> Add Entry
-            </button>
+        <div class="inline-block grow text-brand-300 text-l flex-1"> Add weight (in kg) and assessment date :
+            <form @submit.prevent="addWeight();" class="inline-flex items-center gap-3">
+            <input v-model=this.weight step="any" type="number" class="bg-surface-raised border border-line-subtle rounded text-ink-primary text-sm h-10 px-2 focus:outline-none focus:ring-2 focus:ring-brand-500" required/>
+            <input v-model=this.date type="date" class="bg-surface-raised border border-line-subtle rounded text-ink-primary text-sm h-10 px-2 focus:outline-none focus:ring-2 focus:ring-brand-500" required/>
+            <Button type="submit" variant="primary"> Add Entry </Button>
             </form>
 
         </div>
@@ -186,8 +179,8 @@ export default {
 
 
 <div class="relative align-center overflow-x-auto p-3">
-    <table class="w-3/4 text-sm text-left text-gray-500 border-zinc-900 bg-zinc-900">
-        <thead class="text-sm text-stone-200">
+    <table class="w-3/4 text-sm text-left border-line-subtle bg-surface-card">
+        <thead class="text-sm text-ink-primary">
             <tr>
                 <th scope="col" class="px-6 py-3">
                     Assessment Date
@@ -199,13 +192,13 @@ export default {
                     % weight change from first measurement
                 </th>
                 <th scope="col" class="px-6 py-3">
-                    
+
                 </th>
             </tr>
         </thead>
-        <tbody class="text-sm text-zinc-900 bg-white">
+        <tbody class="text-sm text-ink-primary bg-surface-raised">
             <!-- Rows go here -->
-            <tr v-for="item in this.weights">
+            <tr v-for="item in this.weights" :key="item[0]">
                 <th scope="col" class="px-6 py-3">
                     {{ item[0] }}
                 </th>
@@ -216,7 +209,7 @@ export default {
                     {{ item[2] }}
                 </th>
                 <th scope="col" class="px-6 py-3" >
-                    <a class="text-blue font-bold hover:text-blue hover:font-bold" @click="DeleteWeight(item[0]);">DELETE</a>
+                    <button type="button" class="text-red-400 font-bold hover:text-red-300" :aria-label="`Delete weight entry from ${item[0]}`" @click="DeleteWeight(item[0]);">DELETE</button>
                 </th>
             </tr>
         </tbody>

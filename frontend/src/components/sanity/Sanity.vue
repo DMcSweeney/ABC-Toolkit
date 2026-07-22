@@ -1,15 +1,21 @@
 <script>
 import api from '@/api/client';
-import popupViewer from '../popupViewer.vue';
+import Modal from '../ui/Modal.vue';
+import Spinner from '../ui/Spinner.vue';
 import failureForm from './FailureForm.vue';
+import { useToastStore } from '@/stores/toast';
 
 
 export default {
     name: 'SanityPage',
+    setup() {
+        return { toast: useToastStore() };
+    },
     data() {
         return {
             src: '', // Src for segmentation QA
             spineSrc: '', //Src for spine QA
+            imageLoading: false, // Whether the main QA image is currently being fetched
             patientID: '', // PatientID
             seriesUUID: '', //Series UUID
             acquisitionDate: '', // Acquisition date
@@ -44,9 +50,10 @@ export default {
             }
             else {
                 this.idx--;
-                window.alert('That was the last image!');
+                this.toast.info('That was the last image!');
                 return;
             }
+            this.imageLoading = true;
             api.post('/api/sanity/fetch_image_by_id', null, { params: { project: this.project, _id: _id, vertebra: this.vertebra } })
                 .then((res) => {
                 this.src = `data:image/png;base64, ` + res.data.image;
@@ -69,10 +76,14 @@ export default {
             })
                 .catch(() => {
                 // Error already surfaced via toast by the shared api client.
+            })
+                .finally(() => {
+                this.imageLoading = false;
             });
         },
         fetchFirstImage() {
             // Fetch first image to rate
+            this.imageLoading = true;
             api.post('/api/sanity/fetch_first_image', null, { params: { project: this.project, vertebra: this.vertebra } })
                 .then((res) => {
                 this.src = `data:image/png;base64, ` + res.data.image;
@@ -83,6 +94,9 @@ export default {
                 this.inputPath = res.data.input_path;
             }).catch(() => {
                     // Error already surfaced via toast by the shared api client.
+            })
+                .finally(() => {
+                this.imageLoading = false;
             });
         },
 
@@ -123,9 +137,10 @@ export default {
             }
             else {
                 this.idx--;
-                window.alert('That was the last image!');
+                this.toast.info('That was the last image!');
                 return;
             }
+            this.imageLoading = true;
             api.post('/api/sanity/fetch_image_by_id', null, { params: { project: this.project, _id: _id, vertebra: this.vertebra } })
                 .then((res) => {
                 this.src = `data:image/png;base64, ` + res.data.image;
@@ -148,6 +163,9 @@ export default {
             })
                 .catch(() => {
                 // Error already surfaced via toast by the shared api client.
+            })
+                .finally(() => {
+                this.imageLoading = false;
             });
         },
         PreviousImage() {
@@ -159,9 +177,10 @@ export default {
             }
             else {
                 this.idx = 0
-                window.alert("You've reached the start");
+                this.toast.info("You've reached the start");
                 return;
             }
+            this.imageLoading = true;
             api.post('/api/sanity/fetch_image_by_id', null, { params: { project: this.project, _id: _id, vertebra: this.vertebra } })
                 .then((res) => {
                 this.src = `data:image/png;base64, ` + res.data.image;
@@ -177,6 +196,9 @@ export default {
             })
                 .catch(() => {
                 // Error already surfaced via toast by the shared api client.
+            })
+                .finally(() => {
+                this.imageLoading = false;
             });
         },
         PassQA() {
@@ -217,9 +239,6 @@ export default {
         ShowSpine() {
             // Reveal spine prediction
             this.showSpineSanity = true;
-        },
-        closeSpine(){
-            this.showSpineSanity = false;
         },
         getSummary(){
             api.get('/api/sanity/get_summary', { params: { project: this.project, vertebra: this.vertebra } })
@@ -262,7 +281,7 @@ export default {
         // this.fetchPatientList();
         
     },
-    components: { popupViewer , failureForm}
+    components: { Modal, Spinner, failureForm}
 };
 
 </script>
@@ -270,14 +289,9 @@ export default {
 
 <template>
     <!-- SPINE POP-UP -->
-    <popupViewer v-show="showSpineSanity" id="spine-sanity"> 
-        <button class="flex text-zinc-950 rounded bg-white h-6" @click="closeSpine();"> 
-            <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor" class="w-6 h-6">
-            <path stroke-linecap="round" stroke-linejoin="round" d="m9.75 9.75 4.5 4.5m0-4.5-4.5 4.5M21 12a9 9 0 1 1-18 0 9 9 0 0 1 18 0Z" />
-            </svg>
-            </button>
-        <img class="m-auto h-full" v-bind:src="spineSrc">
-    </popupViewer> 
+    <Modal v-model="showSpineSanity" title="Spine QA" size="lg">
+        <img class="m-auto h-full" alt="Spine labelling QA image" v-bind:src="spineSrc">
+    </Modal>
     <!-- FAILURE POP-UP -->
     <div v-if=this.qcReady :key=this.qc_report>
         <failureForm ref="failureFormComponent" :_id=this.idList[this.idx] :project=this.project :qc_report=this.qc_report></failureForm>
@@ -324,8 +338,11 @@ export default {
 
     <!-- MAIN IMAGE -->
     <div class="relative flex w-full p-5 hover:h-full ">
-        <div class="inline-block object-fill h-full hover:border hover:border-stone-500">
-            <img v-bind:src="src">    
+        <div class="relative inline-block object-fill h-full hover:border hover:border-stone-500">
+            <div v-if="imageLoading" class="absolute inset-0 flex items-center justify-center">
+                <Spinner size="lg" />
+            </div>
+            <img v-bind:src="src" :alt="`Segmentation QA image for patient ${patientID}`">
         </div>
     </div>
     <!-- MAIN IMAGE -->
