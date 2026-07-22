@@ -71,7 +71,7 @@ def infer_register(req):
         f"onto fixed scan ({pct_spine['input_path']}, size {fixed_image.GetSize()}, spacing {fixed_image.GetSpacing()})"
     )
 
-    fixed_to_moving, metrics = register_rigid(fixed_image, moving_image)
+    fixed_to_moving, metrics = register_rigid(fixed_image, moving_image, log_dir=output_dir)
 
     # Persist the moving->fixed transform to disk, in the convention already used by
     # abcTK/segment/engine.py::read_transform/apply_transform (i.e. it maps a point in the
@@ -112,7 +112,7 @@ def infer_register(req):
 #* =============== HELPER FUNCTIONS =====================
 ########################################################
 
-def register_rigid(fixed_image, moving_image, downsample_spacing=(3.0, 3.0, 3.0)):
+def register_rigid(fixed_image, moving_image, downsample_spacing=(3.0, 3.0, 3.0), log_dir=None):
     """
     Rigid registration of moving_image onto fixed_image using itk-elastix.
 
@@ -145,7 +145,19 @@ def register_rigid(fixed_image, moving_image, downsample_spacing=(3.0, 3.0, 3.0)
     moving_shifted = sitk.Image(moving_ds)
     moving_shifted.SetOrigin(tuple(np.array(moving_ds.GetOrigin()) + center_shift))
 
-    fixed_itk = _sitk_to_itk(fixed_ds)
+    # A planning CT's FOV is typically much larger than a CBCT's (especially for H&N, where the
+    # on-board imager's FOV can be quite small). elastix's default sampler draws samples across
+    # the *entire* fixed image and checks whether they land inside the moving image after the
+    # current transform estimate - if the fixed image is much bigger than the moving image, most
+    # samples miss entirely and elastix fails outright ("Too many samples map outside moving
+    # image buffer"), rather than degrading gracefully. Cropping the fixed image down to a region
+    # comfortably covering the moving image's own extent (centred on the same pre-alignment
+    # point, with a safety margin for residual misalignment) fixes this - verified empirically
+    # against a synthetic large-pCT/small-CBCT-sized case that reproduced the failure without
+    # this crop and resolved it with it.
+    fixed_cropped = _crop_fixed_to_moving_extent(fixed_ds, moving_ds, fixed_center)
+
+    fixed_itk = _sitk_to_itk(fixed_cropped)
     moving_itk = _sitk_to_itk(moving_shifted)
 
     parameter_object = itk.ParameterObject.New()
@@ -155,9 +167,15 @@ def register_rigid(fixed_image, moving_image, downsample_spacing=(3.0, 3.0, 3.0)
     rigid_map['Metric'] = ['AdvancedMattesMutualInformation']
     parameter_object.AddParameterMap(rigid_map)
 
-    _, result_transform_parameters = itk.elastix_registration_method(
-        fixed_itk, moving_itk, parameter_object=parameter_object, log_to_console=False
-    )
+    elastix_log_dir = os.path.join(log_dir, 'elastix_log') if log_dir else '/tmp'
+    os.makedirs(elastix_log_dir, exist_ok=True)
+    try:
+        _, result_transform_parameters = itk.elastix_registration_method(
+            fixed_itk, moving_itk, parameter_object=parameter_object,
+            log_to_console=False, log_to_file=True, output_directory=elastix_log_dir
+        )
+    except RuntimeError as e:
+        raise RuntimeError(f"{e}\nSee the full elastix log at {elastix_log_dir}/elastix.log") from e
 
     # elastix's own convention: this transform maps a FIXED-space point onto the corresponding
     # point in moving_shifted's space (used natively for pull-resampling moving_shifted into the
@@ -224,6 +242,27 @@ def write_registration_qc(output_dir, fixed_image, moving_image, moving_to_fixed
         paths[level] = output_filename
 
     return paths
+
+
+def _crop_fixed_to_moving_extent(fixed_image, moving_image, fixed_center, margin=1.5):
+    """
+    Crops fixed_image to a box centred on fixed_center, sized to comfortably cover
+    moving_image's own physical extent (with a safety margin for residual misalignment beyond
+    the centre-of-gravity pre-alignment). See register_rigid's docstring for why this is needed.
+    """
+    moving_extent = np.array(moving_image.GetSize()) * np.array(moving_image.GetSpacing())
+    half_extent = (moving_extent * margin) / 2.0
+
+    lower_index = np.array(fixed_image.TransformPhysicalPointToContinuousIndex(tuple(fixed_center - half_extent)))
+    upper_index = np.array(fixed_image.TransformPhysicalPointToContinuousIndex(tuple(fixed_center + half_extent)))
+    start = np.maximum(np.minimum(lower_index, upper_index), 0).astype(int)
+    stop = np.minimum(np.maximum(lower_index, upper_index), np.array(fixed_image.GetSize()) - 1).astype(int)
+    size = np.maximum(stop - start, 1).tolist()
+
+    roi = sitk.RegionOfInterestImageFilter()
+    roi.SetIndex([int(x) for x in start])
+    roi.SetSize([int(x) for x in size])
+    return roi.Execute(fixed_image)
 
 
 def _resample_isotropic(image, spacing):

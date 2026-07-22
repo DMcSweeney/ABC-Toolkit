@@ -95,11 +95,24 @@ def get_patients_in_project():
 
     patients = database.images.distinct('patient_id', {"project": project})
 
-    data = []
+    data = {x: {} for x in patients}
     for patient in patients:
         series = database.images.distinct('series_uuid', {"project": project, "patient_id": patient})
-        data.append({"patient_id": patient, "series_uuids": series})
-
+        vertebrae = set()
+        rtstruct = False
+        for uuid in series:
+            q = database.images.find_one({'_id': uuid})
+            if q is not None and 'rtstruct_path' in q:
+                rtstruct = True
+            preds = database.spine.find_one({'_id': uuid})
+            if preds is None:
+                continue
+            pred_levels = set(list(preds['prediction'].keys()))
+            vertebrae  = vertebrae | pred_levels
+        data[patient] = {'num_series': len(series), 
+                         'vertebrae': ', '.join([x for x in sorted(list(vertebrae))]), 
+                         'rtstruct_detected': 'detected' if rtstruct else 'not detected'}
+    logger.info(data)
     res = make_response(jsonify({
         "message": "Data is list of dicts. Keys: patient_id, series_uuids",
         "data": data
