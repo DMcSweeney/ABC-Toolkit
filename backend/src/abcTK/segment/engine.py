@@ -452,7 +452,7 @@ class segmentationEngine():
             
             if compartment == 'background': continue # Skip background
 
-            if compartment == 'skeletal_muscle' and 'IMAT' not in self.segments:
+            if compartment == 'skeletal_muscle' and 'IMAT' not in self.segments and self.modality != 'CBCT':
                     if not all([x is None for x in self.thresholds['IMAT']]):
                         logger.info("Extracting IMAT stats")
                         data['IMAT'] = self.extract_stats(self.holders['IMAT'], self.thresholds['IMAT'])
