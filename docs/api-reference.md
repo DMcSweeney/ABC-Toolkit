@@ -287,7 +287,10 @@ Query: `project` (yes), `vertebra` (yes). Returns `{"image_dict": {patient_id: [
 Query: `project` (yes), `vertebra` (yes). Returns `{"id_list": [...]}` — a shuffled flat list of series ids with a QC entry for this vertebra (to-do first if any exist).
 
 ### `POST /api/sanity/fetch_spine_by_id`
-Query: `_id` (yes), `project` (yes), `vertebra` (yes, used only when the stored spine sanity image is keyed per-level). Returns the base64 spine-labelling QA image.
+Query: `_id` (yes), `project` (yes), `vertebra` (yes, used only when the stored spine sanity image is keyed per-level). Returns the base64 spine-labelling QA image. If `_id`'s own `quality_control` entry has no `SPINE` image (e.g. a CBCT, which never runs `infer/spine` itself), falls back to the `SPINE` image of the reference scan recorded in the `registration` collection (see [`POST /api/jobs/infer/register`](#post-apijobsinferregister)), if one exists. Returns `404` if no spine image can be found either way.
+
+### `POST /api/sanity/fetch_registration_by_id`
+Query: `_id` (yes), `project` (yes), `vertebra` (yes). Returns the base64 registration QC overlay image (planning CT slice | registered moving-scan slice) written by an `infer/register` job (see [`POST /api/jobs/infer/register`](#post-apijobsinferregister)), read from the `registration` collection (not `quality_control`). Returns `404` if this scan has no registration record for the given vertebra — expected for any scan that didn't reuse another scan's spine labelling (e.g. a planning CT itself).
 
 ### `POST /api/sanity/pass_qa`
 Query: `project` (yes), `_id` (yes), `vertebra` (yes). Sets **both** `quality_control.<vertebra>` and `quality_control.SPINE` to `1` (pass) — passing a compartment implies its spine labelling is also being confirmed correct.

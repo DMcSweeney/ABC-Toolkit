@@ -23,7 +23,10 @@ export default {
             seriesIdx: 0, // Index to use to iterate through series_uuids for currentpID
             disableSpine: false, // Bool to enable/disable spine pop-up
             showSpineSanity: false, // Display spine QA image -- this displays the popup vs disableSpine that disables/enables it
-            spineSrc: '', // Src for spine image 
+            spineSrc: '', // Src for spine image
+            disableRegistration: false, // Bool to enable/disable registration pop-up
+            showRegistrationSanity: false, // Display registration QC image -- this displays the popup vs disableRegistration that disables/enables it
+            registrationSrc: '', // Src for registration QC image
             QAsrc: '', // Src for QA image
             project: this.$route.params.project, // Get project name from route
             vertebra: this.$route.params.vertebra,
@@ -91,6 +94,7 @@ export default {
 
             this.current_uuid = _id;
             this.GetSpine(_id)
+            this.GetRegistration(_id)
             this.getQCReport(_id)
             this.getImagePassRate();
             api.get('/api/patient_qa/fetch_image_by_id', { params: { project: this.project, _id: _id, vertebra: this.vertebra } })
@@ -169,6 +173,20 @@ export default {
                     this.disableSpine = true;
             });
         },
+        GetRegistration(_id) {
+            // Get the registration QC image (if this scan reused another scan's spine labelling
+            // via registration, e.g. a CBCT) and display
+            api.post('/api/sanity/fetch_registration_by_id', null, { params: { project: this.project, _id: _id, vertebra: this.vertebra }, skipErrorToast: true })
+                .then((res) => {
+                this.registrationSrc = `data:image/png;base64, ` + res.data.image;
+                this.disableRegistration = false;
+            })
+                .catch(() => {
+                    // Most scans (e.g. planning CTs) have no registration QC image - disabling
+                    // the button is a normal, expected outcome here, not an error.
+                    this.disableRegistration = true;
+            });
+        },
         getQCReport(_id){
             // Get the spine QC image and display
             api.get('/api/database/get_qc_report', { params: { project: this.project, _id: _id } })
@@ -198,6 +216,13 @@ export default {
         },
         closeSpine(){
             this.showSpineSanity = false;
+        },
+        ShowRegistration() {
+            // Reveal registration QC image
+            this.showRegistrationSanity = true;
+        },
+        closeRegistration(){
+            this.showRegistrationSanity = false;
         },
         showFailForm() {
             this.$refs.failureFormComponent.showFailureForm = true;
@@ -269,7 +294,17 @@ export default {
         </svg>
         </button>
     <img class="m-auto h-full" :src="spineSrc">
-</popupViewer> 
+</popupViewer>
+
+<!-- REGISTRATION POP-UP -->
+<popupViewer v-show="showRegistrationSanity" id="registration-sanity">
+    <button class="flex text-zinc-950 rounded bg-white h-6" @click="closeRegistration();">
+        <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor" class="w-6 h-6">
+        <path stroke-linecap="round" stroke-linejoin="round" d="m9.75 9.75 4.5 4.5m0-4.5-4.5 4.5M21 12a9 9 0 1 1-18 0 9 9 0 0 1 18 0Z" />
+        </svg>
+        </button>
+    <img class="m-auto h-full" :src="registrationSrc">
+</popupViewer>
 
     <!-- FAILURE POP-UP -->
 <div v-if=this.qcReady :key=this.qc_report>
@@ -377,12 +412,17 @@ export default {
             w-40 border border-slate-900 rounded shadow-sm shadow-red-300 font-extrabold" @click="this.showFailForm()">Fail
         </button>
         </div>
-        <div class="col-span-2 grid">
+        <div class="grid">
             <button @click="ShowSpine();" :disabled="disableSpine"
                 class="bg-zinc-700 hover:bg-zinc-400 text-stone-200 hover:text-stone-900 h-10 w-40 border border-slate-900 rounded shadow-inner shadow-zinc-600 font-extrabold"> Show spine</button>
         </div>
-        
-        <div class=""> 
+
+        <div class="grid">
+            <button @click="ShowRegistration();" :disabled="disableRegistration"
+                class="bg-zinc-700 hover:bg-zinc-400 text-stone-200 hover:text-stone-900 h-10 w-40 border border-slate-900 rounded shadow-inner shadow-zinc-600 font-extrabold"> Show registration</button>
+        </div>
+
+        <div class="">
             <button class="bg-green-400 hover:bg-green-600 text-zinc-900 h-10 w-40 border border-slate-900 rounded shadow-sm shadow-green-300 font-extrabold" @click="PassQA()">Pass</button>
         </div>
     </div>

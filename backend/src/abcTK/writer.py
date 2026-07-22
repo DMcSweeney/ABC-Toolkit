@@ -42,7 +42,7 @@ class sanityWriter():
         # Resample
         Image, ratio = self.resample_isotropic_grid(Image)
         image = sitk.GetArrayFromImage(Image)
-        image = self.convolve_gaussian(image, axis=-1, sigma=3) ## Remove the ribs/hips!!
+        #image = self.convolve_gaussian(image, axis=-1, sigma=3) ## Remove the ribs/hips!!
         if self.modality in ['CT', 'CBCT']:
             mip = np.max(image, axis=-1)
         elif self.modality == 'MR':
@@ -140,8 +140,15 @@ class sanityWriter():
             prediction += (i+1)*mask[key]
 
         logger.info(f"PLOTTING {tag} with mask shape: {prediction.shape}")
-        img = image[self.slice_number-self.num_slices:self.slice_number+self.num_slices+1]
-        prediction = prediction[self.slice_number-self.num_slices:self.slice_number+self.num_slices+1]
+        
+        ## Crop image axially around body, helps with QA (esp. of CBCT)
+        nonzero = np.nonzero(prediction)
+        min_x, max_x = min(nonzero[1]), max(nonzero[1])
+        min_y, max_y = min(nonzero[2]), max(nonzero[2])
+       
+
+        img = image[self.slice_number-self.num_slices:self.slice_number+self.num_slices+1, min_x-10:max_x+10, min_y-10:max_y+10]
+        prediction = prediction[self.slice_number-self.num_slices:self.slice_number+self.num_slices+1, min_x-10:max_x+10, min_y-10:max_y+10]
 
         slice_nums = np.arange(self.slice_number-self.num_slices, self.slice_number+self.num_slices+1, 1)
         for i in range(total_slices):

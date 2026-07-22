@@ -181,13 +181,55 @@ def fetchSpineByID():
     _id = request.args.get("_id")
     project = request.args.get("project")
     vertebra = request.args.get("vertebra")
-    database = mongo.db 
+    database = mongo.db
     response = database.quality_control.find_one({f"_id": _id, 'project': project})
+
+    if response is None or 'SPINE' not in response.get('paths_to_sanity_images', {}):
+        # This scan may be reusing another scan's spine labelling via registration (e.g. a CBCT
+        # reusing its planning CT's - abcTK/inference/spine.py never runs on a CBCT, so it never
+        # gets its own SPINE entry) - abcTK/inference/register.py records which reference scan
+        # was used for exactly this case. Not filtered by `_id` alone (not `project`, since the
+        # reference scan isn't guaranteed to be in the same project).
+        registration = database.registration.find_one({"_id": _id})
+        if registration is not None:
+            response = database.quality_control.find_one({"_id": registration['reference_scan']})
+
+    if response is None or 'SPINE' not in response.get('paths_to_sanity_images', {}):
+        abort(404, description="No spine sanity image found for this scan.")
+
     logger.info(response['paths_to_sanity_images']['SPINE'])
     path_to_sanity_ = response['paths_to_sanity_images']['SPINE']
     if isinstance(path_to_sanity_, dict):
         ## If dict_, spine image was generated for a single level
         path_to_sanity_ = path_to_sanity_[vertebra]
+
+    with open(path_to_sanity_, 'rb') as f:
+        image = bytearray(f.read())
+    encoded_im = base64.b64encode(image).decode('utf8').replace("'",'"')
+
+    res = make_response(jsonify({
+        "message": "Here's your image",
+        "image": encoded_im,
+        "patient_id": response["patient_id"],
+    }), 200)
+
+    return res
+
+@bp.route('/api/sanity/fetch_registration_by_id', methods=["POST"])
+def fetchRegistrationByID():
+    # Registration QC images (abcTK/inference/register.py) live in their own `registration`
+    # collection, not `quality_control` - a scan only has one if it reused another scan's spine
+    # labelling via registration (e.g. a CBCT reusing its planning CT's), so a missing entry here
+    # is a normal, expected outcome (most scans, e.g. planning CTs themselves, won't have one).
+    _id = request.args.get("_id")
+    project = request.args.get("project")
+    vertebra = request.args.get("vertebra")
+    database = mongo.db
+    response = database.registration.find_one({"_id": _id, 'project': project})
+    if response is None or vertebra not in response.get('qc_image_paths', {}):
+        abort(404, description="No registration QC image found for this scan/vertebra.")
+
+    path_to_sanity_ = response['qc_image_paths'][vertebra]
 
     with open(path_to_sanity_, 'rb') as f:
         image = bytearray(f.read())
