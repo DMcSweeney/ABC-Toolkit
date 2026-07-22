@@ -11,7 +11,7 @@ const paddingClasses = {
 </script>
 
 <template>
-    <div class="bg-surface-card border border-line-subtle rounded shadow shadow-black">
+    <div class="bg-surface-card border border-line-subtle border-t-white/5 rounded shadow-lg shadow-black/30">
         <div v-if="$slots.header" class="border-b border-line-subtle px-6 py-3">
             <slot name="header"></slot>
         </div>

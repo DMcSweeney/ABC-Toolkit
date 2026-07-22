@@ -2,6 +2,7 @@
 import api from '@/api/client';
 import Modal from '../ui/Modal.vue';
 import Spinner from '../ui/Spinner.vue';
+import Badge from '../ui/Badge.vue';
 import failureForm from './FailureForm.vue';
 import { useToastStore } from '@/stores/toast';
 
@@ -281,7 +282,7 @@ export default {
         // this.fetchPatientList();
         
     },
-    components: { Modal, Spinner, failureForm}
+    components: { Modal, Spinner, Badge, failureForm}
 };
 
 </script>
@@ -302,25 +303,17 @@ export default {
         
 
         <div class="inline-block flex-1"><button
-         class="bg-zinc-700 hover:bg-zinc-400 text-stone-200 hover:text-stone-900 h-10 w-20 border border-slate-900 rounded shadow-inner shadow-zinc-600"
+         class="bg-surface-raised hover:bg-line-default text-ink-primary h-10 w-20 border border-line-subtle rounded shadow-inner shadow-black/30 transition-colors duration-150"
           @click="PreviousImage()"> Previous</button>
         </div>
 
-        <div class="inline-block grow text-indigo-200 text-xl flex-1"> Patient ID:
-            <div v-if="status == 2" class="inline-block text-stone-200">
-                {{ patientID }}
-            </div> 
-            <div v-else-if="status == 1" class="inline-block text-green-400">
-                {{ patientID }}
-            </div> 
-            <div v-else-if="status == 0" class="inline-block text-red-400">
-                {{ patientID }}
-            </div> 
+        <div class="inline-flex items-center gap-2 grow text-accent-400 text-xl flex-1"> Patient ID:
+            <Badge :variant="status == 1 ? 'pass' : status == 0 ? 'fail' : 'todo'">{{ patientID }}</Badge>
         </div>
-        
+
         <div class="inline-block flex-0">
             <button
-             class="bg-zinc-700 hover:bg-zinc-400 text-stone-200 hover:text-stone-900 h-10 w-20 border border-slate-900 rounded shadow-inner shadow-zinc-600"
+             class="bg-surface-raised hover:bg-line-default text-ink-primary h-10 w-20 border border-line-subtle rounded shadow-inner shadow-black/30 transition-colors duration-150"
               @click="NextImage()"> Next</button>
         </div>
 
@@ -328,9 +321,9 @@ export default {
 
     <div class="relative flex items-center w-full px-40 content-center ">
 
-        <div class="inline-block grow"> <a class="text-indigo-300">Input Path: </a> <a class="text-zinc-500 "> {{ inputPath }}  </a> </div>
-        <div class="inline-block grow"> <a class="text-indigo-300">Acquisition Date: </a> <a class="text-zinc-500 "> {{ acquisitionDate }}  </a> </div>
-        <div class="inline-block grow"> <a class="text-indigo-300">Level: </a> <a class="text-zinc-500 "> {{ vertebra }}  </a> </div>
+        <div class="inline-block grow"> <a class="text-accent-400">Input Path: </a> <a class="text-ink-muted "> {{ inputPath }}  </a> </div>
+        <div class="inline-block grow"> <a class="text-accent-400">Acquisition Date: </a> <a class="text-ink-muted "> {{ acquisitionDate }}  </a> </div>
+        <div class="inline-block grow"> <a class="text-accent-400">Level: </a> <a class="text-ink-muted "> {{ vertebra }}  </a> </div>
     </div>
 
     <!-- Wrap image in tabs based on acquisition date & modality-->
@@ -338,7 +331,7 @@ export default {
 
     <!-- MAIN IMAGE -->
     <div class="relative flex w-full p-5 hover:h-full ">
-        <div class="relative inline-block object-fill h-full hover:border hover:border-stone-500">
+        <div class="relative inline-block object-fill h-full hover:border hover:border-line-default">
             <div v-if="imageLoading" class="absolute inset-0 flex items-center justify-center">
                 <Spinner size="lg" />
             </div>
@@ -349,36 +342,35 @@ export default {
 
     <div class="relative flex items-center w-full p-5 px-40 m-auto content-center">
         <div class="inline-block flex-0"> <button class="bg-red-400 hover:bg-red-500 text-zinc-900 h-10
-             w-40 border border-slate-900 rounded shadow-sm shadow-red-300 font-extrabold" @click="showFailForm()">Fail
+             w-40 border border-line-subtle rounded shadow-sm shadow-red-300/40 font-extrabold transition-colors duration-150" @click="showFailForm()">Fail
             </button>
         </div>
         <div class="inline-block m-auto">
             <button @click="ShowSpine();" :disabled="disableSpine"
-             class="bg-zinc-700 hover:bg-zinc-400 text-stone-200 hover:text-stone-900 h-10 w-40 border border-slate-900 rounded shadow-inner shadow-zinc-600 font-extrabold"> Show spine</button>
+             class="bg-surface-raised hover:bg-line-default text-ink-primary h-10 w-40 border border-line-subtle rounded shadow-inner shadow-black/30 font-extrabold transition-colors duration-150"> Show spine</button>
         </div>
-        
-        <div class="inline-block flex-0"> <button class="bg-green-400 hover:bg-green-600 text-zinc-900 h-10 w-20 border border-slate-900 rounded shadow-sm shadow-green-300 font-extrabold" @click="PassQA()">Pass</button></div>
+
+        <div class="inline-block flex-0"> <button class="bg-brand-400 hover:bg-brand-500 text-zinc-900 h-10 w-20 border border-line-subtle rounded shadow-sm shadow-brand-300/40 font-extrabold transition-colors duration-150" @click="PassQA()">Pass</button></div>
     </div>
 
 
     <div class="absolute items-bottom w-full bottom-0">
         <div class="align-end">
-                <input id="disable-spine-checkbox" type="checkbox" class="w-4 h-4 text-blue-600 bg-gray-100" v-model="this.disableSpinePopup">
-                <label for="disable-spine-checkbox" class="pl-3 text-slate-200 text-xl">Disable spine popup</label>
+                <input id="disable-spine-checkbox" type="checkbox" class="w-4 h-4 text-brand-500 bg-surface-raised" v-model="this.disableSpinePopup">
+                <label for="disable-spine-checkbox" class="pl-3 text-ink-secondary text-xl">Disable spine popup</label>
         </div>
-        <div class="inline-block text-2xl flex-0 w-full" >
-            <a class="text-green-500 pr-2"> Pass: {{ this.num_pass }}</a>
-            <a class="text-red-500 pr-2"> Fail: {{ this.num_fail }} </a>
-            <a class="text-zinc-500 pr-2"> To-do: {{ this.num_todo }} </a>
-            <!-- <a class="text-stone-200 pr-2"> Total: {{ this.num_total }}</a> -->
+        <div class="inline-flex gap-3 text-xl flex-0 w-full px-2" >
+            <Badge variant="pass">Pass: {{ this.num_pass }}</Badge>
+            <Badge variant="fail">Fail: {{ this.num_fail }}</Badge>
+            <Badge variant="todo">To-do: {{ this.num_todo }}</Badge>
         </div>
-                
 
-        <hr class="h-px my-2 bg-slate-400 border-0 ">
+
+        <hr class="h-px my-2 bg-line-default border-0 ">
         <div class="flex">
-            <a class="text-indigo-500"> Series UUID: </a> <a class="text-zinc-500 "> {{ seriesUUID }}  </a>
+            <a class="text-accent-400"> Series UUID: </a> <a class="text-ink-muted "> {{ seriesUUID }}  </a>
         </div>
-        
+
     </div>
 
 </template>

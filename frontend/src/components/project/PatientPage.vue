@@ -104,19 +104,23 @@ export default {
         },
         plotChange(){
             const plot = document.getElementById("plot");
-            
+
             var weights =  {
                 x: [...this.weight_dates],
                 y: [...this.weight_changes],
                 name: 'Weight',
-                type:'lines+markers'
+                type:'lines+markers',
+                line: { color: '#38bdf8', width: 2 },
+                marker: { color: '#38bdf8', size: 6 },
             };
             if (this.showBodyCompTrend) {
                 var bodyComp =  {
                 x: [...this.bodyComp_dates],
                 y: [...this.bodyComp_changes],
                 name: `${this.compartment}@${this.vertebra}`,
-                type:'lines+markers'
+                type:'lines+markers',
+                line: { color: '#34d399', width: 2 },
+                marker: { color: '#34d399', size: 6 },
                 };
 
 
@@ -124,10 +128,16 @@ export default {
             } else {
                 var data = [weights];
             }
-            
+
             var layout = {
                 showlegend: true,
-                legend: {x: 0., y: 1.2}
+                legend: {x: 0., y: 1.2, font: { color: '#adbac7' }},
+                paper_bgcolor: '#161b22',
+                plot_bgcolor: '#161b22',
+                font: { color: '#adbac7' },
+                xaxis: { gridcolor: '#30363d', zerolinecolor: '#3d444d' },
+                yaxis: { gridcolor: '#30363d', zerolinecolor: '#3d444d' },
+                margin: { t: 30 },
             };
 
             Plotly.newPlot(plot, data, layout);
@@ -150,7 +160,7 @@ export default {
 <template>
 
 <div class=" flex justify-center items-center w-full p-8 content-center mx-auto">
-    <div class="inline-block grow text-brand-300 text-xl flex-1"> Patient ID:
+    <div class="inline-block grow text-accent-400 text-xl flex-1"> Patient ID:
         <div class="inline-block text-ink-primary">
             {{ patientID }}
         </div>
@@ -164,7 +174,7 @@ export default {
 <div>
     <!-- Add + delete weight -->
     <div class="relative flex items-center w-full p-8 content-center mx-auto">
-        <div class="inline-block grow text-brand-300 text-l flex-1"> Add weight (in kg) and assessment date :
+        <div class="inline-block grow text-accent-400 text-l flex-1"> Add weight (in kg) and assessment date :
             <form @submit.prevent="addWeight();" class="inline-flex items-center gap-3">
             <input v-model=this.weight step="any" type="number" class="bg-surface-raised border border-line-subtle rounded text-ink-primary text-sm h-10 px-2 focus:outline-none focus:ring-2 focus:ring-brand-500" required/>
             <input v-model=this.date type="date" class="bg-surface-raised border border-line-subtle rounded text-ink-primary text-sm h-10 px-2 focus:outline-none focus:ring-2 focus:ring-brand-500" required/>
@@ -218,8 +228,8 @@ export default {
 </div>
 
 
-<div id="plot">
-    
+<div class="w-3/4 mx-auto p-3">
+    <div id="plot" class="h-[450px] rounded overflow-hidden border border-line-subtle"></div>
 </div>
 
 

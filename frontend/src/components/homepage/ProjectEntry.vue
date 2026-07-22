@@ -79,14 +79,14 @@ export default {
 <template>
     <Modal v-model="renameProjectWindow" title="Rename project" size="md">
         <div class="flex justify-center items-center gap-3 h-full">
-            <p class="text-ink-primary text-xl">Rename project: <span class="text-green-400">{{ projectName }}</span></p>
+            <p class="text-ink-primary text-xl">Rename project: <span class="text-brand-400">{{ projectName }}</span></p>
             <Input v-model="newProjectName" placeholder="New project name" class="max-w-md" />
             <Button variant="pass" @click="RenameProject()">Change</Button>
         </div>
     </Modal>
 
     <div
-        class="w-5/6 h-12 text-ink-primary hover:border hover:border-line-default bg-surface-card hover:bg-surface-raised inline-block rounded grid grid-cols-4">
+        class="w-5/6 h-12 text-ink-primary border border-transparent hover:border-line-default bg-surface-card hover:bg-surface-raised hover:shadow-md hover:shadow-black/30 inline-block rounded grid grid-cols-4 transition-all duration-150">
         <!-- Project name -->
         <div class="align-start content-center ml-3 ">
             {{ name }}

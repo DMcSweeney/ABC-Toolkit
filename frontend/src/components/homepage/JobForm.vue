@@ -127,7 +127,7 @@ export default {
 <template>
 
 <div class="flex m-auto py-5 w-full">
-    <p class="text-ink-primary text-4xl align-center mx-auto"> Submit jobs </p>
+    <p class="text-ink-primary text-4xl font-bold tracking-tight align-center mx-auto"> Submit jobs </p>
 </div>
 
 <Card class="m-auto w-1/2">

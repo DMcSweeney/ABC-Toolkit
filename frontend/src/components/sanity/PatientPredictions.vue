@@ -5,6 +5,7 @@
 import api from '@/api/client';
 import Modal from '../ui/Modal.vue';
 import Spinner from '../ui/Spinner.vue';
+import Badge from '../ui/Badge.vue';
 import failureForm from './FailureForm_v2.vue';
 import Multiselect from 'vue-multiselect';
 import { useToastStore } from '@/stores/toast';
@@ -50,6 +51,17 @@ export default {
     },
 
     methods: {
+        parseAcquisitionDate(dateStr) {
+            // Dates are stored/displayed as dd-mm-YYYY — parse explicitly rather than
+            // relying on string sort, which would order by day-of-month first.
+            const [day, month, year] = dateStr.split('-').map(Number);
+            return new Date(year, month - 1, day);
+        },
+        sortedIdList(patientID) {
+            return Object.keys(this.imageObj[patientID]).sort((a, b) =>
+                this.parseAcquisitionDate(this.imageObj[patientID][a]) - this.parseAcquisitionDate(this.imageObj[patientID][b])
+            );
+        },
         async fetchPatientList() {
             // Get JSON object of ALL patients and their images 
             // TODO only fetch patient IDs? then make another call to fetch UIDs for that patient? Currently, might take up a lot of mem. on big projects...
@@ -65,7 +77,7 @@ export default {
                     this.patientIdx = Math.floor(Math.random()*this.patientList.length)
                     this.currentPID = this.patientList[this.patientIdx]; // Select a random patient to show first
                 }
-                this.idList = Object.keys(this.imageObj[this.currentPID]);
+                this.idList = this.sortedIdList(this.currentPID);
             })
                 .catch(() => {
                 // Error already surfaced via toast by the shared api client.
@@ -140,7 +152,7 @@ export default {
                 this.toast.info('That was the last patient!');
                 return;
             }
-            this.idList = Object.keys(this.imageObj[this.currentPID]);
+            this.idList = this.sortedIdList(this.currentPID);
             this.GetQAImage(this.idList[0]);
         },
         PreviousImage() {
@@ -166,7 +178,7 @@ export default {
                 this.toast.info("You've reached the start");
                 return;
             }
-            this.idList = Object.keys(this.imageObj[this.currentPID]);
+            this.idList = this.sortedIdList(this.currentPID);
             this.GetQAImage(this.idList[0]);
         },
         GetSpine(_id) {
@@ -231,12 +243,12 @@ export default {
             this.$refs.failureFormComponent.showFailureForm = true;
         },
         active_uid(elem) {
-            return this.current_uuid === elem ? 'underline' : '';
+            return this.current_uuid === elem;
         },
         changePatient(elem){
             this.currentPID = elem;
             this.seriesIdx = 0; 
-            this.idList = Object.keys(this.imageObj[this.currentPID]);
+            this.idList = this.sortedIdList(this.currentPID);
             const _id = this.idList[this.seriesIdx];
             this.GetQAImage(_id);
             this.$router.push({name: this.$router.currentRoute.name, params: {patient_id:elem}});  
@@ -256,7 +268,7 @@ export default {
             this.patientList = patList;
             this.patientIdx = 0;
             this.currentPID = this.patientList[this.patientIdx];
-            this.idList = Object.keys(this.imageObj[this.currentPID]);
+            this.idList = this.sortedIdList(this.currentPID);
             this.seriesIdx = 0;
             this.GetQAImage(this.idList[this.seriesIdx]);
         },
@@ -280,7 +292,7 @@ export default {
     },
     mounted() {
     },
-    components: {Modal, Spinner, failureForm, Multiselect}
+    components: {Modal, Spinner, Badge, failureForm, Multiselect}
 }
 
 
@@ -307,34 +319,34 @@ export default {
 <div class="grid grid-cols-7 gap-8 w-full place-items-center">
         <div class="">
             <button
-             class="bg-zinc-900 hover:bg-zinc-400 text-stone-200 hover:text-stone-900 h-10 w-36 border border-slate-900 rounded shadow-inner shadow-zinc-600"
+             class="bg-surface-raised hover:bg-line-default text-ink-primary h-10 w-36 border border-line-subtle rounded shadow-inner shadow-black/30 transition-colors duration-150"
               @click="PreviousPatient()"> Previous Patient</button>
         </div>
         <div class="px-8"><button
-         class="bg-zinc-700 hover:bg-zinc-400 text-stone-200 hover:text-stone-900 h-10 w-32 border border-slate-900 rounded shadow-inner shadow-zinc-600"
+         class="bg-surface-raised hover:bg-line-default text-ink-primary h-10 w-32 border border-line-subtle rounded shadow-inner shadow-black/30 transition-colors duration-150"
           @click="PreviousImage()"> Previous Image</button>
         </div>
-        <div class="col-span-2 grid text-indigo-200 text-xl w-full"> 
+        <div class="col-span-2 grid text-accent-400 text-xl w-full">
             <multiselect v-model="this.currentPID" :options="this.patientList" :close-on-select="true" :allow-empty="false" @select="changePatient"></multiselect>
         </div>
 
         <div class="justify-center grid w-full">
             <button id="dropdownBgHoverButton" data-dropdown-toggle="dropdownBgHover"
-            class="text-stone-200 bg-indigo-700 h-10 w-40 font-medium border border-black shadow-inner rounded inline-flex text-center p-4 items-center justify-center" type="button">Filter patients by
+            class="text-ink-primary bg-brand-600 hover:bg-brand-700 h-10 w-40 font-medium border border-line-subtle shadow-inner rounded inline-flex text-center p-4 items-center justify-center transition-colors duration-150" type="button">Filter patients by
             </button>
 
             <!-- Dropdown menu -->
-            <div id="dropdownBgHover" class="z-10 hidden w-48 bg-zinc-950 rounded-lg shadow-sm shadow-white border border-white">
-                <ul class="p-3 space-y-1 text-sm text-gray-700 dark:text-gray-200" aria-labelledby="dropdownBgHoverButton">
+            <div id="dropdownBgHover" class="z-10 hidden w-48 bg-surface-card rounded-lg shadow-lg shadow-black/40 border border-line-subtle">
+                <ul class="p-3 space-y-1 text-sm text-ink-secondary" aria-labelledby="dropdownBgHoverButton">
                 <li v-for="elem in this.statusOptions">
-                    <div class="flex items-center p-2 rounded-sm hover:bg-indigo-700">
-                    <input id="checkbox-item" type="checkbox" v-model="this.filterStatus[elem]" class="w-4 h-4 text-indigo-700 bg-gray-100 border-gray-300 rounded-sm">
-                    <label for="checkbox-item" class="w-full ms-2 text-sm font-medium text-white rounded-sm">{{elem}}</label>
+                    <div class="flex items-center p-2 rounded-sm hover:bg-brand-600/20">
+                    <input id="checkbox-item" type="checkbox" v-model="this.filterStatus[elem]" class="w-4 h-4 text-brand-500 bg-surface-raised border-line-subtle rounded-sm">
+                    <label for="checkbox-item" class="w-full ms-2 text-sm font-medium text-ink-primary rounded-sm">{{elem}}</label>
                     </div>
                 </li>
                 </ul>
                 <div class="flex content-center justify-center pb-2">
-                    <button class="text-stone-200 bg-indigo-700 hover:text-zinc-950 w-1/3 h-8 font-medium rounded text-center" type="button" @click="filterPatients();">Submit
+                    <button class="text-ink-primary bg-brand-600 hover:bg-brand-700 w-1/3 h-8 font-medium rounded text-center transition-colors duration-150" type="button" @click="filterPatients();">Submit
                     </button>
                 </div>
             </div>
@@ -343,12 +355,12 @@ export default {
 
         <div class="">
             <button
-             class="bg-zinc-700 hover:bg-zinc-400 text-stone-200 hover:text-stone-900 h-10 w-32 border border-slate-900 rounded shadow-inner shadow-zinc-600"
+             class="bg-surface-raised hover:bg-line-default text-ink-primary h-10 w-32 border border-line-subtle rounded shadow-inner shadow-black/30 transition-colors duration-150"
               @click="NextImage()"> Next Image</button>
         </div>
         <div class="">
             <button
-             class="bg-zinc-900 hover:bg-zinc-400 text-stone-200 hover:text-stone-900 h-10 w-36 border border-slate-900 rounded shadow-inner shadow-zinc-600"
+             class="bg-surface-raised hover:bg-line-default text-ink-primary h-10 w-36 border border-line-subtle rounded shadow-inner shadow-black/30 transition-colors duration-150"
               @click="NextPatient()"> Next Patient</button>
         </div>
 
@@ -357,19 +369,18 @@ export default {
 
 
 
-<!-- Button for cycling through images for this patient-->
-<div class="bg-black flex-grow mt-6">
+<!-- Selector for cycling through images for this patient-->
+<div class="bg-surface-header flex-grow mt-6">
     <div class="mt-6">
-    <ul class="flex flex-wrap font-medium justify-center">
-        <li v-for="item in this.idList" class="me-2">
-            <button
-             class="bg-zinc-950 border hover:text-indigo-400 hover:cursor-pointer
-              border-black text-slate-200 hover:bg-zinc-800 w-32 font-bold rounded h-10 content-center peer-checked:border-indigo-500 peer-checked:text-indigo-300" 
-            :id = item type="button" @click="this.GetQAImage(item);" v-bind:class="this.active_uid(item)">
-                {{this.imageObj[this.currentPID][item]}}
-            </button>
-        </li>
-    </ul>
+    <p class="text-ink-muted text-xs px-2 pb-1 text-center">{{ idList.length }} scan{{ idList.length === 1 ? '' : 's' }} for this patient, oldest to newest</p>
+    <div class="flex gap-2 overflow-x-auto pb-2 px-2 justify-center">
+        <button v-for="item in this.idList" :key="item" type="button"
+            class="shrink-0 px-4 h-10 rounded-full border font-bold whitespace-nowrap transition-colors duration-150"
+            :class="active_uid(item) ? 'bg-brand-500/15 border-brand-400 text-brand-300' : 'bg-surface-raised border-line-subtle text-ink-secondary hover:text-brand-400 hover:border-brand-400/50'"
+            :id="item" @click="this.GetQAImage(item);">
+            {{this.imageObj[this.currentPID][item]}}
+        </button>
+    </div>
     <!-- Image -->
 
     <div class="relative mt-4">
@@ -383,9 +394,9 @@ export default {
 
 <div class="flex content-center items-center mx-auto w-3/4 py-4">
     <div class="grid grid-cols-4 gap-4 w-full place-items-center">
-        <div> <a class="text-indigo-300">Input Path: </a> <a class="text-zinc-500 "> {{ this.input_path }}</a> </div>
-        <div class="grid col-span-2"> <a class="text-indigo-300">Acquisition Date: </a> <a class="text-zinc-500 "> {{ this.acquisition_date }}  </a> </div>
-        <div class="flex-1"> <a class="text-indigo-300">Level: </a> <a class="text-zinc-500 "> {{ this.vertebra }}  </a> </div>
+        <div> <a class="text-accent-400">Input Path: </a> <a class="text-ink-muted "> {{ this.input_path }}</a> </div>
+        <div class="grid col-span-2"> <a class="text-accent-400">Acquisition Date: </a> <a class="text-ink-muted "> {{ this.acquisition_date }}  </a> </div>
+        <div class="flex-1"> <a class="text-accent-400">Level: </a> <a class="text-ink-muted "> {{ this.vertebra }}  </a> </div>
 
     </div>
 
@@ -396,7 +407,7 @@ export default {
 <div class="flex mx-auto w-3/4 mt-2">
     <div class="grid-cols-4">
         <div class="">
-            <a class="text-stone-200 italic">If any tissue failed:</a>
+            <a class="text-ink-secondary italic">If any tissue failed:</a>
         </div>
     </div>
 
@@ -404,43 +415,38 @@ export default {
 <div class="flex mx-auto w-3/4 mt-1">
     <div class="grid grid-cols-4 gap-4 place-items-center w-full">
         <div class=""> <button class="bg-red-400 hover:bg-red-500 text-zinc-900 h-10
-            w-40 border border-slate-900 rounded shadow-sm shadow-red-300 font-extrabold" @click="this.showFailForm()">Fail
+            w-40 border border-line-subtle rounded shadow-sm shadow-red-300/40 font-extrabold transition-colors duration-150" @click="this.showFailForm()">Fail
         </button>
         </div>
         <div class="grid">
             <button @click="ShowSpine();" :disabled="disableSpine"
-                class="bg-zinc-700 hover:bg-zinc-400 text-stone-200 hover:text-stone-900 h-10 w-40 border border-slate-900 rounded shadow-inner shadow-zinc-600 font-extrabold"> Show spine</button>
+                class="bg-surface-raised hover:bg-line-default text-ink-primary h-10 w-40 border border-line-subtle rounded shadow-inner shadow-black/30 font-extrabold transition-colors duration-150"> Show spine</button>
         </div>
 
         <div class="grid">
             <button @click="ShowRegistration();" :disabled="disableRegistration"
-                class="bg-zinc-700 hover:bg-zinc-400 text-stone-200 hover:text-stone-900 h-10 w-40 border border-slate-900 rounded shadow-inner shadow-zinc-600 font-extrabold"> Show registration</button>
+                class="bg-surface-raised hover:bg-line-default text-ink-primary h-10 w-40 border border-line-subtle rounded shadow-inner shadow-black/30 font-extrabold transition-colors duration-150"> Show registration</button>
         </div>
 
         <div class="">
-            <button class="bg-green-400 hover:bg-green-600 text-zinc-900 h-10 w-40 border border-slate-900 rounded shadow-sm shadow-green-300 font-extrabold" @click="PassQA()">Pass</button>
+            <button class="bg-brand-400 hover:bg-brand-500 text-zinc-900 h-10 w-40 border border-line-subtle rounded shadow-sm shadow-brand-300/40 font-extrabold transition-colors duration-150" @click="PassQA()">Pass</button>
         </div>
     </div>
 
 </div>
 
-<div class="grid grid-cols-3 absolute bottom-0 px-2 py-1 bg-slate-950 mt-20 w-full text-sm font-bold">
-    <div v-if="this.status === 2"> 
-        <a class="text-indigo-300 "> Series UUID: </a> <a class="text-slate-200 italic"> {{ this.current_uuid }}  </a>
+<div class="grid grid-cols-3 items-center absolute bottom-0 px-2 py-1 bg-surface-header mt-20 w-full text-sm font-bold">
+    <div class="inline-flex items-center gap-2">
+        <a class="text-accent-400"> Series UUID: </a>
+        <Badge :variant="status == 1 ? 'pass' : status == 0 ? 'fail' : 'todo'">{{ this.current_uuid }}</Badge>
     </div>
 
-    <div v-else-if="this.status === 1"> 
-        <a class="text-indigo-300 "> Series UUID: </a> <a class="text-green-500 italic"> {{ this.current_uuid }}  </a>
-    </div>
-    <div v-else> 
-        <a class="text-indigo-300 "> Series UUID: </a> <a class="text-red-500 italic"> {{ this.current_uuid }}  </a>
-    </div>
     <div class="text-center">
-        <a class="text-stone-400 italic"></a>
+        <a class="text-ink-muted italic"></a>
     </div>
 
-    <div class="text-right">   
-        <a class="text-stone-200"> Image pass rate: {{this.passed_images}}/{{this.total_images}} ({{this.pass_rate}} %)</a>
+    <div class="text-right">
+        <a class="text-ink-primary"> Image pass rate: {{this.passed_images}}/{{this.total_images}} ({{this.pass_rate}} %)</a>
     </div>
 
 </div>

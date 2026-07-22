@@ -61,7 +61,7 @@ export default {
 
 <template>
 <div class="h-full w-full flex justify-center my-10">
-  <h1 class="text-4xl text-ink-primary font-bold">
+  <h1 class="text-4xl text-ink-primary font-bold tracking-tight">
     QA summary
   </h1>
 </div>
@@ -73,12 +73,12 @@ export default {
 </div>
 
 <div v-else-if="ready" class="m-auto w-2/3 p-3">
-        <div class="m-auto w-5/6 h-8 text-stone-200 text-xl font-bold rounded flex justify-center">
+        <div class="m-auto w-5/6 h-8 text-ink-primary text-xl font-bold rounded flex justify-center">
             <div class="align-start content-center"> Level </div>
-            <div class="content-center mx-auto text-green-500"> Passed </div>
-            <div class="content-center mx-auto text-red-500">Failed </div>
-            <div class="content-center mx-auto text-zinc-500"> TODO </div>
-            <div class="flex m-auto justify-end hover:text-indigo-400 mr-3"> Inspect </div>
+            <div class="content-center mx-auto text-brand-400"> Passed </div>
+            <div class="content-center mx-auto text-red-400">Failed </div>
+            <div class="content-center mx-auto text-ink-muted"> TODO </div>
+            <div class="flex m-auto justify-end hover:text-brand-400 mr-3"> Inspect </div>
         </div>
         <ul>
         <li v-for="[key, value] in Object.entries(this.qc_summary)" :key="key" class="flex justify-center m-auto">
