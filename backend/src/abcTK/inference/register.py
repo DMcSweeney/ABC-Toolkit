@@ -32,6 +32,7 @@ import matplotlib.pyplot as plt
 
 from abcTK.inference.segment import get_loader_function, check_params
 from abcTK.segment.engine import segmentationEngine
+from abcTK.writer import sanityWriter
 
 logger = logging.getLogger(__name__)
 
@@ -204,10 +205,17 @@ def register_rigid(fixed_image, moving_image, downsample_spacing=(3.0, 3.0, 3.0)
 
 def write_registration_qc(output_dir, fixed_image, moving_image, moving_to_fixed, fixed_centroids):
     """
-    Writes one side-by-side (pCT slice | registered moving-scan slice, resampled onto the pCT's
-    own grid exactly as abcTK/segment/engine.py::apply_transform will do for segmentation)
-    overlay image per vertebra level, for mandatory human visual review before the registration
-    result is trusted.
+    Writes one 3-panel (pCT slice | registered moving-scan slice | green/magenta overlay) QC
+    image per vertebra level, for mandatory human visual review before the registration result
+    is trusted. The moving scan is resampled onto the pCT's own grid exactly as
+    abcTK/segment/engine.py::apply_transform will do for segmentation.
+
+    The overlay uses the green/magenta complementary-colour fusion convention already standard
+    in clinical image-registration review tools (Eclipse, MIM, RayStation, etc.): the planning
+    CT goes in the green channel, the registered moving scan in magenta (red+blue). Aligned
+    structures blend to white/grey; misaligned edges show up as distinct green/magenta
+    "ghosting" - obvious even to a non-expert, and a familiar convention to anyone used to
+    reviewing registrations in a TPS.
     """
     reference_info = {
         'Origin': fixed_image.GetOrigin(), 'Spacing': fixed_image.GetSpacing(),
@@ -218,28 +226,44 @@ def write_registration_qc(output_dir, fixed_image, moving_image, moving_to_fixed
     fixed_array = sitk.GetArrayFromImage(fixed_image)
     moving_array = sitk.GetArrayFromImage(resampled_moving)
 
+    # Same soft-tissue/bone window/level already used elsewhere in the app for CT/CBCT display
+    # (e.g. the C3 window/level in abcTK/segment/engine.py::_get_window_level) - both slices need
+    # a shared, consistent window for the overlay's colour balance to reflect real anatomy rather
+    # than each image's own arbitrary auto-scaled range.
+    window, level = 400, 40
+
     qc_dir = os.path.join(output_dir, 'sanity', 'registration')
     os.makedirs(qc_dir, exist_ok=True)
 
     paths = {}
-    for level, centroid in fixed_centroids.items():
+    for level_name, centroid in fixed_centroids.items():
         slice_number = int(round(centroid[-1]))
         if not (0 <= slice_number < moving_array.shape[0]):
             continue
 
-        fig, ax = plt.subplots(1, 2, figsize=(10, 5))
+        fixed_slice = sanityWriter.wl_norm(fixed_array[slice_number], window, level)
+        moving_slice = sanityWriter.wl_norm(moving_array[slice_number], window, level)
+
+        overlay = np.zeros((*fixed_slice.shape, 3))
+        overlay[..., 0] = moving_slice  # R
+        overlay[..., 1] = fixed_slice   # G
+        overlay[..., 2] = moving_slice  # B
+
+        fig, ax = plt.subplots(1, 3, figsize=(15, 5))
         fig.patch.set_facecolor('black')
-        ax[0].imshow(fixed_array[slice_number], cmap='gray')
-        ax[0].set_title(f'Planning CT - {level} (slice {slice_number})', c='white')
-        ax[1].imshow(moving_array[slice_number], cmap='gray')
+        ax[0].imshow(fixed_slice, cmap='gray', vmin=0, vmax=1)
+        ax[0].set_title(f'Planning CT - {level_name} (slice {slice_number})', c='white')
+        ax[1].imshow(moving_slice, cmap='gray', vmin=0, vmax=1)
         ax[1].set_title(f'Moving scan - registered (slice {slice_number})', c='white')
+        ax[2].imshow(np.clip(overlay, 0, 1))
+        ax[2].set_title('Overlay (green=planning CT, magenta=moving)', c='white')
         for a in ax:
             a.axis('off')
 
-        output_filename = os.path.join(qc_dir, f'{level}.png')
+        output_filename = os.path.join(qc_dir, f'{level_name}.png')
         fig.savefig(output_filename, facecolor='black')
         plt.close(fig)
-        paths[level] = output_filename
+        paths[level_name] = output_filename
 
     return paths
 
