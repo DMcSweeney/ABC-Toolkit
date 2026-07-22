@@ -38,11 +38,11 @@ export default {
             {{ num_todo }}
         </div>
         <!-- Links to project -->
-        <div class="flex m-auto justify-end hover:text-indigo-400 mr-3">
+        <div class="flex m-auto justify-end hover:text-brand-400 mr-3">
             <p class="">
-                <a :href="`/${this.projectName}/patient_qa/${level}`">
-                    <MagnifyingGlassIcon class="size-6 text-stone-200 hover:text-indigo-400" />
-                </a>
+                <router-link :to="`/${this.projectName}/patient_qa/${level}`" :aria-label="`Inspect QA for level ${level}`">
+                    <MagnifyingGlassIcon class="size-6 text-stone-200 hover:text-brand-400" />
+                </router-link>
             </p>
         </div>
     </div>

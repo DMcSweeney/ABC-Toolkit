@@ -25,7 +25,8 @@ const router = createRouter({
       name: 'submit_job',
       component: JobForm,
       meta: {
-        requiresAuth:true
+        requiresAuth:true,
+        breadcrumbs: () => [{ label: 'Submit jobs' }]
       }
     },
     {
@@ -33,7 +34,8 @@ const router = createRouter({
       name: 'project',
       component: ProjectPage,
       meta: {
-        requiresAuth:true
+        requiresAuth:true,
+        breadcrumbs: (route) => [{ label: route.params.project }]
       }
     },
     {
@@ -41,7 +43,11 @@ const router = createRouter({
       name: 'sanityHomePage',
       component: SanityHomePage,
       meta: {
-        requiresAuth:true
+        requiresAuth:true,
+        breadcrumbs: (route) => [
+          { label: route.params.project, to: `/${route.params.project}` },
+          { label: 'QA summary' }
+        ]
       }
     },
     {
@@ -49,7 +55,12 @@ const router = createRouter({
       name: 'sanity',
       component: SanityPage,
       meta: {
-        requiresAuth:true
+        requiresAuth:true,
+        breadcrumbs: (route) => [
+          { label: route.params.project, to: `/${route.params.project}` },
+          { label: 'QA summary', to: `/${route.params.project}/sanity` },
+          { label: route.params.vertebra }
+        ]
       }
     },
     {
@@ -57,7 +68,11 @@ const router = createRouter({
       name: 'patientPage',
       component: PatientPage,
       meta: {
-        requiresAuth:true
+        requiresAuth:true,
+        breadcrumbs: (route) => [
+          { label: route.params.project, to: `/${route.params.project}` },
+          { label: route.params.patientID }
+        ]
       }
     },
     {
@@ -65,7 +80,12 @@ const router = createRouter({
       name: 'patientPredictions',
       component: PatientPredictions,
       meta: {
-        requiresAuth:true
+        requiresAuth:true,
+        breadcrumbs: (route) => [
+          { label: route.params.project, to: `/${route.params.project}` },
+          { label: 'Patient QA', to: `/${route.params.project}/sanity` },
+          { label: route.params.vertebra }
+        ]
       }
     },
     {

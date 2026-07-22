@@ -59,8 +59,7 @@ export default {
         this.updateQCReport();
     },
     watch: {
-        'this.$parent.qc_report'(newVal) {
-            console.log("Updating value");
+        'this.$parent.qc_report'() {
             this.updateQCReport()
         }
     },
@@ -75,7 +74,7 @@ export default {
     <div v-show="this.showFailureForm" id="failure-form" class="w-full h-full flex absolute z-50 bg-black bg-transparent ">
         <div class="w-1/2 h-2/3 flex bg-black border border-white z-50 mx-auto my-10 rounded shadow-sm shadow-white">
   
-        <button class="flex text-zinc-950 rounded bg-white h-6" @click="closeFailForm();"> <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor" class="w-6 h-6">
+        <button class="flex text-zinc-950 rounded bg-white h-6 focus:outline-none focus:ring-2 focus:ring-brand-500" aria-label="Close" @click="closeFailForm();"> <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor" class="w-6 h-6">
             <path stroke-linecap="round" stroke-linejoin="round" d="m9.75 9.75 4.5 4.5m0-4.5-4.5 4.5M21 12a9 9 0 1 1-18 0 9 9 0 0 1 18 0Z" />
             </svg>
         </button>
@@ -94,7 +93,7 @@ export default {
                         <div class="text-gray-200 text-xl font-bold pb-3">
                             <p class="text-indigo-200">Select failure mode</p>
                         </div>
-                        <select v-model="failMode" class="relative w-full h-8 rounded-md bg-white shadow-lg font-bold px-2 ring-1 ring-black ring-opacity-5 focus:outline-none cursor-pointer" 
+                        <select v-model="failMode" class="relative w-full h-8 rounded-md bg-white shadow-lg font-bold px-2 ring-1 ring-black ring-opacity-5 focus:outline-none focus:ring-2 focus:ring-brand-500 cursor-pointer"
                         placeholder="Select a failure mode">
                             <!-- Active: "bg-gray-100 text-gray-900", Not Active: "text-gray-700" -->
                             <option value="badSegmentation">Bad Segmentation</option>
@@ -173,7 +172,7 @@ export default {
                         <div class="text-xl font-bold pb-3">
                             <p class="text-indigo-200">Additional Notes</p>
                         </div>
-                        <textarea v-model="notes" placeholder="Add notes here if needed" class="w-full h-20 px-2 rounded-md bg-white shadow-lg ring-1 ring-black ring-opacity-5 focus:outline-none"></textarea>
+                        <textarea v-model="notes" placeholder="Add notes here if needed" class="w-full h-20 px-2 rounded-md bg-white shadow-lg ring-1 ring-black ring-opacity-5 focus:outline-none focus:ring-2 focus:ring-brand-500"></textarea>
                     </div>
                     
                     <div class="relative flex w-full justify-center py-10">

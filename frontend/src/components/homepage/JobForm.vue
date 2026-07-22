@@ -1,6 +1,10 @@
 <script>
 import api from '@/api/client';
 import { useToastStore } from '@/stores/toast';
+import Card from '../ui/Card.vue';
+import Button from '../ui/Button.vue';
+import Input from '../ui/Input.vue';
+import Select from '../ui/Select.vue';
 
 // Mirrors the vertebral levels registered in backend/src/abcTK/segment/model_bank.py.
 // There's no endpoint that lists them dynamically, so this needs a manual update if that
@@ -9,6 +13,7 @@ const KNOWN_VERTEBRAE = ['C3', 'T4', 'T9', 'T12', 'L3', 'L5', 'Sacrum', 'Thigh']
 
 export default {
     name: 'JobForm',
+    components: { Card, Button, Input, Select },
     setup() {
         return { toast: useToastStore() };
     },
@@ -122,86 +127,60 @@ export default {
 <template>
 
 <div class="flex m-auto py-5 w-full">
-    <p class="text-stone-200 text-4xl align-center mx-auto"> Submit jobs </p>
+    <p class="text-ink-primary text-4xl align-center mx-auto"> Submit jobs </p>
 </div>
 
-<div class="m-auto bg-zinc-900 w-1/2 border shadow shadow-black border-black p-6 flex-1 rounded">
+<Card class="m-auto w-1/2">
 
     <!-- Mode toggle -->
     <div class="flex justify-center gap-2 pb-6">
-        <button type="button" @click="mode = 'single'"
-            class="rounded px-4 py-2 font-bold"
-            :class="mode === 'single' ? 'bg-indigo-700 text-stone-200' : 'bg-zinc-800 text-stone-400 hover:bg-zinc-700'">
+        <Button type="button" :variant="mode === 'single' ? 'primary' : 'secondary'" @click="mode = 'single'">
             Single scan
-        </button>
-        <button type="button" @click="mode = 'csv'"
-            class="rounded px-4 py-2 font-bold"
-            :class="mode === 'csv' ? 'bg-indigo-700 text-stone-200' : 'bg-zinc-800 text-stone-400 hover:bg-zinc-700'">
+        </Button>
+        <Button type="button" :variant="mode === 'csv' ? 'primary' : 'secondary'" @click="mode = 'csv'">
             Batch (CSV)
-        </button>
+        </Button>
     </div>
 
     <!-- SINGLE SCAN FORM -->
     <form v-if="mode === 'single'" @submit.prevent="submitSingleJob" class="flex flex-col gap-4">
-        <div>
-            <label class="block text-stone-300 text-sm pb-1">Project name</label>
-            <input v-model="singleProject" type="text" placeholder="my_project"
-                class="rounded text-xl px-2 bg-white h-10 w-full" required>
-        </div>
-        <div>
-            <label class="block text-stone-300 text-sm pb-1">Input path (as seen inside the container, e.g. /data/inputs/patient_01)</label>
-            <input v-model="inputPath" type="text" placeholder="/data/inputs/patient_01"
-                class="rounded text-xl px-2 bg-white h-10 w-full font-mono" required>
-        </div>
+        <Input v-model="singleProject" label="Project name" placeholder="my_project" required />
+        <Input v-model="inputPath" label="Input path (as seen inside the container, e.g. /data/inputs/patient_01)"
+            placeholder="/data/inputs/patient_01" class="font-mono" required />
         <div class="flex gap-4">
-            <div class="flex-1">
-                <label class="block text-stone-300 text-sm pb-1">Vertebral level</label>
-                <select v-model="vertebra" class="rounded text-xl px-2 bg-white h-10 w-full" required>
-                    <option value="" disabled>Select a level</option>
-                    <option v-for="level in knownVertebrae" :key="level" :value="level">{{ level }}</option>
-                </select>
-            </div>
-            <div class="w-1/3">
-                <label class="block text-stone-300 text-sm pb-1">Extra slices each side</label>
-                <input v-model.number="numSlices" type="number" min="0"
-                    class="rounded text-xl px-2 bg-white h-10 w-full">
-            </div>
+            <Select v-model="vertebra" label="Vertebral level" :options="knownVertebrae" placeholder="Select a level"
+                class="flex-1" required />
+            <Input v-model.number="numSlices" label="Extra slices each side" type="number" class="w-1/3" />
         </div>
-        <p class="text-stone-500 text-xs">
+        <p class="text-ink-muted text-xs">
             Submits a spine-labelling job, then a dependent segmentation job at the chosen level once labelling finishes.
         </p>
-        <button type="submit" :disabled="submitting"
-            class="mx-auto bg-green-500 hover:bg-green-600 disabled:bg-zinc-700 disabled:text-stone-500 text-zinc-900 font-bold rounded h-10 w-40">
+        <Button type="submit" variant="pass" :loading="submitting" class="mx-auto w-40">
             {{ submitting ? 'Submitting...' : 'Submit job' }}
-        </button>
+        </Button>
     </form>
 
     <!-- CSV BATCH FORM -->
     <form v-else @submit.prevent="submitCsvJobs" class="flex flex-col gap-4">
+        <Input v-model="csvProject" label="Project name" placeholder="my_project" required />
         <div>
-            <label class="block text-stone-300 text-sm pb-1">Project name</label>
-            <input v-model="csvProject" type="text" placeholder="my_project"
-                class="rounded text-xl px-2 bg-white h-10 w-full" required>
-        </div>
-        <div>
-            <label class="block text-stone-300 text-sm pb-1">
+            <label class="block text-ink-secondary text-sm pb-1">
                 CSV file (one row per scan; required column "input_path"; optional "job_type" of spine/segment/full, plus any other request argument as a column)
             </label>
-            <label class="inline-block bg-black hover:border hover:border-white hover:cursor-pointer hover:bg-zinc-800 rounded h-10 leading-10 px-4 text-green-500 font-bold text-xl" for="file-input">
+            <label class="inline-block bg-surface-raised hover:border hover:border-line-default hover:cursor-pointer hover:bg-line-subtle rounded h-10 leading-10 px-4 text-green-500 font-bold text-xl" for="file-input">
                 {{ csvFile ? csvFile.name : 'Choose CSV file' }}
             </label>
             <input ref="csvFileInput" id="file-input" type="file" @change="handleFileSelect" accept="text/csv,.csv" hidden>
         </div>
-        <div v-if="submitting && uploadPercent > 0" class="text-stone-400 text-sm">
+        <div v-if="submitting && uploadPercent > 0" class="text-ink-muted text-sm">
             Uploading: {{ uploadPercent }}%
         </div>
-        <button type="submit" :disabled="submitting"
-            class="mx-auto bg-green-500 hover:bg-green-600 disabled:bg-zinc-700 disabled:text-stone-500 text-zinc-900 font-bold rounded h-10 w-40">
+        <Button type="submit" variant="pass" :loading="submitting" class="mx-auto w-40">
             {{ submitting ? 'Submitting...' : 'Upload & submit' }}
-        </button>
+        </Button>
     </form>
 
-</div>
+</Card>
 
 </template>
 
