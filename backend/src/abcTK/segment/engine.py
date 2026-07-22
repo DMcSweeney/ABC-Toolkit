@@ -482,17 +482,26 @@ class segmentationEngine():
             json = {self.v_level: [0, 0, self.slice_number]}
             paths_to_sanity['SPINE'] = writer.write_spine_sanity('SPINE', originalImage, json, self.loader_function)
         else:
-            ## Check if labelling has been done else plot spine
+            ## Plot every labelled level, if a spine prediction is available, so the target
+            ## level's position is shown against the whole spine - otherwise (not labelled yet)
+            ## fall back to marking just the current level.
+            ## If this scan reused another scan's spine labelling via registration (e.g. a CBCT
+            ## reusing its planning CT's - abcTK/inference/spine.py never runs on a CBCT, so it
+            ## has no spine entry of its own), fall back to the reference scan's prediction.
+            ## `originalImage` is already this scan resampled onto the reference's grid (via
+            ## load_data's resample_transform branch) whenever that applies, so the reference
+            ## scan's own coordinates are valid on it directly.
             from app import mongo
             database = mongo.db
-            res = database.images.find_one({"_id": self.series_uuid}, {"labelling_done": 1})
-            if res is not None:
-                if res['labelling_done'] == 'False':
-                    json = {self.v_level: [0, 0, self.slice_number]}
-                    paths_to_sanity['SPINE'] = writer.write_spine_sanity('SPINE', originalImage, json, self.loader_function)
-                else:
-                    json = database.spine.find_one({"_id": self.series_uuid}, {"prediction": 1})
-                    paths_to_sanity['SPINE'] = writer.write_spine_sanity('SPINE', originalImage, json['prediction'], self.loader_function)
+            spine_entry = database.spine.find_one({"_id": self.series_uuid}, {"prediction": 1})
+            if spine_entry is None and 'reference_scan' in kwargs:
+                spine_entry = database.spine.find_one({"_id": kwargs['reference_scan']}, {"prediction": 1})
+
+            if spine_entry is not None:
+                paths_to_sanity['SPINE'] = writer.write_spine_sanity('SPINE', originalImage, spine_entry['prediction'], self.loader_function)
+            else:
+                json = {self.v_level: [0, 0, self.slice_number]}
+                paths_to_sanity['SPINE'] = writer.write_spine_sanity('SPINE', originalImage, json, self.loader_function)
 
         paths_to_sanity['ALL'] = writer.write_all_segmentation_sanity('ALL', self.image, self.holders, data)
         return data, paths_to_sanity
