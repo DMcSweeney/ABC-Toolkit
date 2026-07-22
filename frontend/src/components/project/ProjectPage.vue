@@ -4,6 +4,7 @@ import PatientTable from './PatientTable.vue';
 import Button from '../ui/Button.vue';
 import LoadingState from '../ui/LoadingState.vue';
 import EmptyState from '../ui/EmptyState.vue';
+import { UserGroupIcon } from '@heroicons/vue/24/outline';
 
 export default {
     name: 'ProjectPage',
@@ -12,7 +13,8 @@ export default {
             patient_info: {},
             loading: true,
             project: this.$route.params.project,
-            sanity_route: `${this.$route.path}/sanity/ `
+            sanity_route: `${this.$route.path}/sanity/ `,
+            UserGroupIcon,
         }
     },
     methods: {
@@ -44,7 +46,7 @@ export default {
 
 <template>
     <div class="flex flex-grid mx-auto pt-5 w-4/5 pb-5 justify-center font-bold">
-        <p class="text-ink-primary text-2xl">Project: <a class="text-green-400"> {{ project }} </a></p>
+        <p class="text-ink-primary text-2xl tracking-tight">Project: <a class="text-brand-400"> {{ project }} </a></p>
         <Button variant="pass" @click="gotoSanity();" class="mx-10"> Check predictions </Button>
     </div>
     <LoadingState v-if="loading" label="Loading patients..." />
@@ -52,6 +54,7 @@ export default {
         v-else-if="!Object.keys(patient_info).length"
         title="No patients found"
         message="No patients have been submitted to this project yet."
+        :icon="UserGroupIcon"
     />
     <div v-else>
         <PatientTable :patients=patient_info />

@@ -14,8 +14,8 @@ const props = defineProps({
 const variantClasses = {
     primary: 'bg-brand-600 hover:bg-brand-700 disabled:bg-surface-raised disabled:text-ink-muted text-ink-primary font-bold',
     secondary: 'bg-surface-raised hover:bg-line-default border border-line-subtle disabled:text-ink-muted text-ink-primary font-bold',
-    pass: 'bg-green-400 hover:bg-green-600 disabled:bg-surface-raised disabled:text-ink-muted text-zinc-900 font-extrabold shadow-sm shadow-green-300',
-    fail: 'bg-red-400 hover:bg-red-600 disabled:bg-surface-raised disabled:text-ink-muted text-zinc-900 font-extrabold shadow-sm shadow-red-300',
+    pass: 'bg-brand-400 hover:bg-brand-500 disabled:bg-surface-raised disabled:text-ink-muted text-zinc-900 font-extrabold shadow-sm shadow-brand-300/40',
+    fail: 'bg-red-400 hover:bg-red-500 disabled:bg-surface-raised disabled:text-ink-muted text-zinc-900 font-extrabold shadow-sm shadow-red-300/40',
     ghost: 'bg-transparent hover:bg-surface-raised text-ink-secondary hover:text-ink-primary disabled:text-ink-muted font-bold',
 }
 
@@ -34,7 +34,7 @@ const tag = computed(() => (props.to ? 'router-link' : 'button'))
         :to="to || undefined"
         :type="!to ? type : undefined"
         :disabled="!to ? isDisabled : undefined"
-        class="inline-flex items-center justify-center gap-2 rounded transition-colors focus:outline-none focus:ring-2 focus:ring-brand-500"
+        class="inline-flex items-center justify-center gap-2 rounded transition-all duration-150 active:scale-[0.97] focus:outline-none focus:ring-2 focus:ring-brand-500"
         :class="[variantClasses[variant], sizeClasses[size], isDisabled && 'pointer-events-none opacity-70']"
     >
         <Spinner v-if="loading" size="sm" />
