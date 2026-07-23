@@ -61,7 +61,7 @@ If you use this tool please cite as follows:
 
 ```
 @software{
-    Donal_McSweeney_ABC_Toolkit,
+    ABC_Toolkit,
     author = {McSweeney, Donal and Ingram, Samuel and McWilliam, Alan},
     license = {Apache-2.0},
     title = {{ABC Toolkit}},
