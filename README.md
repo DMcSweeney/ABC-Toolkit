@@ -6,8 +6,7 @@
 [![DOI](https://zenodo.org/badge/DOI/10.5281/zenodo.21511427.svg)](https://doi.org/10.5281/zenodo.21511427)
 
 
-[**Paper**]()
-| [**Getting started**](#getting_started)
+[**Getting started**](#getting_started)
 | [**Using ABC**](#using_abc)
 | [**API Reference**](docs/api-reference.md)
 | [**Docs**](https://dmcsweeney.github.io/ABC-Toolkit/)
