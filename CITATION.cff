@@ -1,0 +1,27 @@
+# This CITATION.cff file was generated with cffinit.
+# Visit https://bit.ly/cffinit to generate yours today!
+
+cff-version: 1.2.0
+title: ABC Toolkit
+message: >-
+  If you use this software, please cite it using the
+  metadata from this file.
+type: software
+authors:
+  - given-names: Donal
+    family-names: McSweeney
+    email: d.mcsweeney@nhs.net
+    name-particle: Donal
+    affiliation: The Christie NHS Foundation Trust
+    orcid: 'https://orcid.org/0000-0002-7099-8270'
+  - given-names: Samuel
+    family-names: Ingram
+    affiliation: The Christie NHS Foundation Trust
+  - given-names: Alan
+    family-names: McWilliam
+    affiliation: The University of Manchester
+identifiers:
+  - type: doi
+    value: 10.5281/zenodo.21511428
+repository-code: 'https://github.com/DMcSweeney/ABC-Toolkit'
+license: Apache-2.0
