@@ -36,6 +36,6 @@ function onInput(event) {
             :class="error && 'border-red-500'"
             @input="onInput"
         >
-        <p v-if="error" class="text-red-400 text-xs pt-1">{{ error }}</p>
+        <p v-if="error" class="text-red-600 dark:text-red-400 text-xs pt-1">{{ error }}</p>
     </div>
 </template>

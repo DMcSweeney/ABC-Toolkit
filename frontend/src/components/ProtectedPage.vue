@@ -5,7 +5,7 @@
         <form v-on:submit.prevent="validateBeforeSubmit" class="flex flex-col items-center gap-3 pt-4">
             <Input class="w-full max-w-xs text-left" label="Password" type="password" v-model.trim="password" />
             <Button type="submit" variant="primary">Submit</Button>
-            <div class="text-red-400" v-if="error"><p>Incorrect password.</p></div>
+            <div class="text-red-600 dark:text-red-400" v-if="error"><p>Incorrect password.</p></div>
         </form>
       </div>
     </div>

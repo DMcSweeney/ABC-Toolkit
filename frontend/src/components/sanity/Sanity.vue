@@ -3,6 +3,7 @@ import api from '@/api/client';
 import Modal from '../ui/Modal.vue';
 import Spinner from '../ui/Spinner.vue';
 import Badge from '../ui/Badge.vue';
+import Popover from '../ui/Popover.vue';
 import failureForm from './FailureForm.vue';
 import { useToastStore } from '@/stores/toast';
 
@@ -36,10 +37,16 @@ export default {
             num_total: 0,
             qcReady: false,
             patientList: Object(), // Contains all patient IDs
-            imageDict: Object() // Keys= pids, Values = list of image ids in db
-
+            imageDict: Object(), // Keys= pids, Values = list of image ids in db
+            debugInfoCache: {}, // Raw images-doc info for the "more info" popover, keyed by series uuid
+            debugInfoLoading: false,
 
         };
+    },
+    computed: {
+        debugInfo() {
+            return this.debugInfoCache[this.idList[this.idx]] || null;
+        },
     },
     methods: {
         displayFirstImage() {
@@ -266,9 +273,26 @@ export default {
                     } else {
                         this.qc_report = null;
                         this.qcReady = true;
-                    } 
-                    
+                    }
+
                 })
+        },
+        fetchDebugInfo() {
+            // Lazily fetch the raw images-collection doc for the "more info" popover, cached
+            // per scan so re-opening/re-hovering doesn't refetch.
+            const _id = this.idList[this.idx];
+            if (this.debugInfoCache[_id]) return;
+            this.debugInfoLoading = true;
+            api.get('/api/database/get_input_args', { params: { _id: _id, project: this.project } })
+                .then((res) => {
+                    this.debugInfoCache[_id] = res.data.data;
+                })
+                .catch(() => {
+                    // Error already surfaced via toast by the shared api client.
+                })
+                .finally(() => {
+                    this.debugInfoLoading = false;
+                });
         },
     },
     created() {
@@ -282,7 +306,7 @@ export default {
         // this.fetchPatientList();
         
     },
-    components: { Modal, Spinner, Badge, failureForm}
+    components: { Modal, Spinner, Badge, Popover, failureForm}
 };
 
 </script>
@@ -319,11 +343,31 @@ export default {
 
     </div>
 
-    <div class="relative flex items-center w-full px-40 content-center ">
-
-        <div class="inline-block grow"> <a class="text-accent-400">Input Path: </a> <a class="text-ink-muted "> {{ inputPath }}  </a> </div>
-        <div class="inline-block grow"> <a class="text-accent-400">Acquisition Date: </a> <a class="text-ink-muted "> {{ acquisitionDate }}  </a> </div>
-        <div class="inline-block grow"> <a class="text-accent-400">Level: </a> <a class="text-ink-muted "> {{ vertebra }}  </a> </div>
+    <div class="relative flex justify-center items-center w-full px-40 content-center ">
+        <Popover align="left" @open="fetchDebugInfo">
+            <template #content>
+                <p class="text-ink-primary font-bold pb-2">Scan details</p>
+                <div v-if="debugInfoLoading" class="text-ink-muted">Loading...</div>
+                <dl v-else-if="debugInfo" class="grid grid-cols-[auto,1fr] gap-x-3 gap-y-1.5">
+                    <dt class="text-accent-400 font-bold">Input path</dt><dd class="text-ink-secondary break-all">{{ debugInfo.input_path }}</dd>
+                    <dt class="text-accent-400 font-bold">Study ID</dt><dd class="text-ink-secondary break-all">{{ debugInfo.study_uuid }}</dd>
+                    <dt class="text-accent-400 font-bold">Series ID</dt><dd class="text-ink-secondary break-all">{{ seriesUUID }}</dd>
+                    <dt class="text-accent-400 font-bold">Modality</dt><dd class="text-ink-secondary">{{ debugInfo.modality }}</dd>
+                    <dt class="text-accent-400 font-bold">Study date</dt><dd class="text-ink-secondary">{{ debugInfo.study_date }}</dd>
+                    <dt class="text-accent-400 font-bold">Series date</dt><dd class="text-ink-secondary">{{ debugInfo.series_date }}</dd>
+                    <dt class="text-accent-400 font-bold">Acquisition date</dt><dd class="text-ink-secondary">{{ debugInfo.acquisition_date }}</dd>
+                    <dt class="text-accent-400 font-bold">Level</dt><dd class="text-ink-secondary">{{ vertebra }}</dd>
+                    <dt class="text-accent-400 font-bold">Pixel spacing</dt><dd class="text-ink-secondary">{{ debugInfo.X_spacing }} × {{ debugInfo.Y_spacing }}</dd>
+                    <dt class="text-accent-400 font-bold">Slice thickness</dt><dd class="text-ink-secondary">{{ debugInfo.slice_thickness }}</dd>
+                    <dt class="text-accent-400 font-bold">Labelling done</dt><dd class="text-ink-secondary">{{ debugInfo.labelling_done ? 'Yes' : 'No' }}</dd>
+                    <dt class="text-accent-400 font-bold">Segmentation done</dt><dd class="text-ink-secondary">{{ debugInfo.segmentation_done ? 'Yes' : 'No' }}</dd>
+                    <template v-if="debugInfo.rtstruct_path">
+                        <dt class="text-accent-400 font-bold">RTSTRUCT</dt><dd class="text-ink-secondary break-all">{{ debugInfo.rtstruct_path }}</dd>
+                    </template>
+                </dl>
+                <div v-else class="text-ink-muted">No info available.</div>
+            </template>
+        </Popover>
     </div>
 
     <!-- Wrap image in tabs based on acquisition date & modality-->

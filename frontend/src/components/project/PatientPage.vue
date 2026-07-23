@@ -3,13 +3,14 @@ import api from '@/api/client';
 import moment from 'moment';
 import Plotly from 'plotly.js-dist-min';
 import { useToastStore } from '@/stores/toast';
+import { useThemeStore } from '@/stores/theme';
 import Button from '../ui/Button.vue';
 
 export default {
     name: 'PatientPage',
     components: { Button },
     setup() {
-        return { toast: useToastStore() };
+        return { toast: useToastStore(), themeStore: useThemeStore() };
     },
     data() {
         return {
@@ -102,16 +103,31 @@ export default {
             return
             //  Should return promise
         },
+        getPlotColors() {
+            // Plotly renders to SVG and can't read CSS variables, so it needs its own literal
+            // hex palette per theme, matching the surface/ink/line/brand/accent token values.
+            if (this.themeStore.theme === 'light') {
+                return {
+                    background: '#ffffff', font: '#475569', grid: '#e2e8f0', zeroline: '#cbd5e1',
+                    weightLine: '#0284c7', bodyCompLine: '#059669',
+                };
+            }
+            return {
+                background: '#161b22', font: '#adbac7', grid: '#30363d', zeroline: '#3d444d',
+                weightLine: '#38bdf8', bodyCompLine: '#34d399',
+            };
+        },
         plotChange(){
             const plot = document.getElementById("plot");
+            const colors = this.getPlotColors();
 
             var weights =  {
                 x: [...this.weight_dates],
                 y: [...this.weight_changes],
                 name: 'Weight',
                 type:'lines+markers',
-                line: { color: '#38bdf8', width: 2 },
-                marker: { color: '#38bdf8', size: 6 },
+                line: { color: colors.weightLine, width: 2 },
+                marker: { color: colors.weightLine, size: 6 },
             };
             if (this.showBodyCompTrend) {
                 var bodyComp =  {
@@ -119,8 +135,8 @@ export default {
                 y: [...this.bodyComp_changes],
                 name: `${this.compartment}@${this.vertebra}`,
                 type:'lines+markers',
-                line: { color: '#34d399', width: 2 },
-                marker: { color: '#34d399', size: 6 },
+                line: { color: colors.bodyCompLine, width: 2 },
+                marker: { color: colors.bodyCompLine, size: 6 },
                 };
 
 
@@ -131,12 +147,12 @@ export default {
 
             var layout = {
                 showlegend: true,
-                legend: {x: 0., y: 1.2, font: { color: '#adbac7' }},
-                paper_bgcolor: '#161b22',
-                plot_bgcolor: '#161b22',
-                font: { color: '#adbac7' },
-                xaxis: { gridcolor: '#30363d', zerolinecolor: '#3d444d' },
-                yaxis: { gridcolor: '#30363d', zerolinecolor: '#3d444d' },
+                legend: {x: 0., y: 1.2, font: { color: colors.font }},
+                paper_bgcolor: colors.background,
+                plot_bgcolor: colors.background,
+                font: { color: colors.font },
+                xaxis: { gridcolor: colors.grid, zerolinecolor: colors.zeroline },
+                yaxis: { gridcolor: colors.grid, zerolinecolor: colors.zeroline },
                 margin: { t: 30 },
             };
 
@@ -151,6 +167,14 @@ export default {
     .then(() => {
         this.plotChange();
     })
+    },
+    watch: {
+        'themeStore.theme'() {
+            // Re-render the chart with the new theme's colors instead of requiring a reload.
+            if (this.weight_dates.length || this.bodyComp_dates.length) {
+                this.plotChange();
+            }
+        },
     },
     props: [],
 }
@@ -219,7 +243,7 @@ export default {
                     {{ item[2] }}
                 </th>
                 <th scope="col" class="px-6 py-3" >
-                    <button type="button" class="text-red-400 font-bold hover:text-red-300" :aria-label="`Delete weight entry from ${item[0]}`" @click="DeleteWeight(item[0]);">DELETE</button>
+                    <button type="button" class="text-red-600 dark:text-red-400 font-bold hover:text-red-500 dark:hover:text-red-300" :aria-label="`Delete weight entry from ${item[0]}`" @click="DeleteWeight(item[0]);">DELETE</button>
                 </th>
             </tr>
         </tbody>

@@ -68,7 +68,7 @@ export default {
 
 <LoadingState v-if="!ready" label="Loading QA summary..." />
 
-<div v-else-if="loadError" class="m-auto w-2/3 p-3 text-center text-red-400 text-xl">
+<div v-else-if="loadError" class="m-auto w-2/3 p-3 text-center text-red-600 dark:text-red-400 text-xl">
     Couldn't load the QA summary for this project. See the error notification for details, or try reloading the page.
 </div>
 
@@ -76,7 +76,7 @@ export default {
         <div class="m-auto w-5/6 h-8 text-ink-primary text-xl font-bold rounded flex justify-center">
             <div class="align-start content-center"> Level </div>
             <div class="content-center mx-auto text-brand-400"> Passed </div>
-            <div class="content-center mx-auto text-red-400">Failed </div>
+            <div class="content-center mx-auto text-red-600 dark:text-red-400">Failed </div>
             <div class="content-center mx-auto text-ink-muted"> TODO </div>
             <div class="flex m-auto justify-end hover:text-brand-400 mr-3"> Inspect </div>
         </div>

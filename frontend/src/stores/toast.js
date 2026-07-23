@@ -21,6 +21,9 @@ export const useToastStore = defineStore('toast', {
         error(message, timeout = 8000) {
             return this.push({ type: 'error', message, timeout })
         },
+        info(message, timeout = 6000) {
+            return this.push({ type: 'info', message, timeout })
+        },
         dismiss(id) {
             this.toasts = this.toasts.filter((t) => t.id !== id)
         },
