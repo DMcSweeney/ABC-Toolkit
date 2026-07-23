@@ -1,6 +1,6 @@
 # Automatic Body Composition (ABC)
 ---
-
+[![Github tag](https://badgen.net/github/tag/Naereen/Strapdown.js)](https://github.com/Naereen/Strapdown.js/tags/)
 [![License: Apache 2.0](https://img.shields.io/badge/License-Apache_2.0-blue.svg)](https://opensource.org/licenses/Apache-2.0)
 [![Docs](https://github.com/DMcSweeney/ABC-Toolkit/actions/workflows/pages/pages-build-deployment/badge.svg?branch=master)](https://github.com/DMcSweeney/ABC-Toolkit/actions/workflows/pages/pages-build-deployment)
 [![DOI](https://zenodo.org/badge/1058789812.svg)](https://doi.org/10.5281/zenodo.21511427)
