@@ -8,6 +8,12 @@ import { useThemeStore } from '@/stores/theme';
 import Button from '../ui/Button.vue';
 import Select from '../ui/Select.vue';
 import LoadingState from '../ui/LoadingState.vue';
+import { TrashIcon } from '@heroicons/vue/24/outline';
+
+const WEIGHT_METRIC_OPTIONS = [
+    { value: 'pct_change', label: '% Change' },
+    { value: 'raw', label: 'Raw Weight (kg)' },
+];
 
 const METRIC_OPTIONS = [
     { value: 'area_pct_change', label: '% Change (Area)' },
@@ -17,7 +23,7 @@ const METRIC_OPTIONS = [
 
 export default {
     name: 'PatientPage',
-    components: { Button, Select, Multiselect, LoadingState },
+    components: { Button, Select, Multiselect, LoadingState, TrashIcon },
     setup() {
         return { toast: useToastStore(), themeStore: useThemeStore() };
     },
@@ -29,6 +35,9 @@ export default {
             weights: new Array(),
             weight_dates: new Array(),
             weight_changes: new Array(),
+            weight_raw: new Array(),
+            weightMetric: 'pct_change', // 'pct_change' | 'raw'
+            weightMetricOptions: WEIGHT_METRIC_OPTIONS,
 
             // Body composition filter state -- populated dynamically from what this patient
             // actually has data for, rather than hardcoded (see get_patient_filter_options).
@@ -139,6 +148,15 @@ export default {
                     // Error already surfaced via toast by the shared api client.
                 })
         },
+        confirmDeleteWeight(date){
+            // The delete action is now an icon-only button, which is easier to misclick than
+            // the old text "DELETE" label was -- a confirm() guard keeps that from being a
+            // one-click accidental data loss, matching the confirm() already used before
+            // destructive actions elsewhere (e.g. ProjectEntry.vue's DeleteProject).
+            if (confirm(`Delete the weight entry from ${date}?`)) {
+                this.DeleteWeight(date);
+            }
+        },
         DeleteWeight(date){
             api.post('/api/weights/delete_weight', null, { params: { _id: this.patientID, date: date } })
             .then(async () => {
@@ -153,11 +171,13 @@ export default {
         fetchWeights(){
             this.weight_dates = [];
             this.weight_changes = [];
+            this.weight_raw = [];
             return api.get('/api/weights/fetch_weights', { params: { _id: this.patientID } })
             .then((res) => {
                 this.weights = res.data.data;
                 for (var item of this.weights) {
                     this.weight_dates.push(item[0])
+                    this.weight_raw.push(Number(item[1]))
                     this.weight_changes.push(Number(item[2]))
                 }
 
@@ -264,10 +284,11 @@ export default {
             const plot = document.getElementById("plot");
             if (!plot) return;
             const colors = this.getPlotColors();
+            const isRaw = this.weightMetric === 'raw';
 
             var weights =  {
                 x: [...this.weight_dates],
-                y: [...this.weight_changes],
+                y: isRaw ? [...this.weight_raw] : [...this.weight_changes],
                 name: 'Weight',
                 type:'lines+markers',
                 line: { color: colors.weightLine, width: 2 },
@@ -281,11 +302,11 @@ export default {
                 plot_bgcolor: colors.background,
                 font: { color: colors.font },
                 xaxis: { title: 'Date', gridcolor: colors.grid, zerolinecolor: colors.zeroline },
-                yaxis: { title: '% change from first measurement', gridcolor: colors.grid, zerolinecolor: colors.zeroline },
+                yaxis: { title: isRaw ? 'Weight (kg)' : '% change from first measurement', gridcolor: colors.grid, zerolinecolor: colors.zeroline },
                 margin: { t: 30 },
             };
 
-            Plotly.newPlot(plot, [weights], layout);
+            Plotly.newPlot(plot, [weights], layout, { responsive: true });
         },
         plotBodyComp(){
             const plot = document.getElementById("bodycomp-plot");
@@ -449,6 +470,9 @@ export default {
             this.plotBodyComp();
             this.plotPopulation();
         },
+        weightMetric() {
+            this.plotWeightChange();
+        },
         filterSelection: {
             handler() {
                 this.fetchBodyCompCombos();
@@ -529,7 +553,9 @@ export default {
                         {{ item[2] }}
                     </th>
                     <th scope="col" class="px-6 py-3" >
-                        <button type="button" class="text-red-600 dark:text-red-400 font-bold hover:text-red-500 dark:hover:text-red-300" :aria-label="`Delete weight entry from ${item[0]}`" @click="DeleteWeight(item[0]);">DELETE</button>
+                        <button type="button" class="text-ink-muted hover:text-red-500 dark:hover:text-red-400 transition-colors duration-150 p-1.5 rounded focus:outline-none focus:ring-2 focus:ring-brand-500" :aria-label="`Delete weight entry from ${item[0]}`" @click="confirmDeleteWeight(item[0]);">
+                            <TrashIcon class="size-5" />
+                        </button>
                     </th>
                 </tr>
             </tbody>
@@ -537,6 +563,12 @@ export default {
     </div>
 
     <div class="mb-6">
+        <div class="flex items-center justify-between pb-2">
+            <p class="text-ink-secondary text-sm font-bold">Weight trend</p>
+            <div class="w-48">
+                <Select v-model="weightMetric" :options="weightMetricOptions" />
+            </div>
+        </div>
         <div id="plot" class="h-[450px] rounded overflow-hidden border border-line-subtle"></div>
     </div>
 

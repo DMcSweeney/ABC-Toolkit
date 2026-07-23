@@ -94,10 +94,10 @@ export default {
             <!-- Rail: primary CTA, quick links, summary stats -->
             <div class="w-full lg:w-72 flex-shrink-0 flex flex-col gap-4">
                 <Card padding="md">
-                    <p class="text-ink-primary font-bold pb-1">Ready to process scans?</p>
-                    <p class="text-ink-muted text-sm pb-3">Submit a new spine-labelling or segmentation job.</p>
+                    <p class="text-ink-primary font-bold pb-1">Process data</p>
+                    <p class="text-ink-muted text-sm pb-3">You'll need a CSV with paths to your data. Data should be visible from the tool.</p>
                     <Button to="/submit_job" variant="primary" class="w-full">
-                        <PlusIcon class="size-5" /> Submit Job
+                        <PlusIcon class="size-5" /> Create Job
                     </Button>
                 </Card>
 
