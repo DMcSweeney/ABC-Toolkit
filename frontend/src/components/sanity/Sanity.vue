@@ -411,8 +411,9 @@ export default {
 
 
         <hr class="h-px my-2 bg-line-default border-0 ">
-        <div class="flex">
-            <a class="text-accent-400"> Series UUID: </a> <a class="text-ink-muted "> {{ seriesUUID }}  </a>
+        <div class="flex items-center gap-2">
+            <a class="text-accent-400"> Series UUID: </a>
+            <Badge :variant="status == 1 ? 'pass' : status == 0 ? 'fail' : 'todo'">{{ seriesUUID }}</Badge>
         </div>
 
     </div>

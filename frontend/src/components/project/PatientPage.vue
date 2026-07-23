@@ -226,8 +226,13 @@ export default {
                 })
                 .finally(() => {
                     this.bodyCompLoading = false;
-                    this.plotBodyComp();
-                    this.plotPopulation();
+                    // Wait for the v-show DOM patch to actually remove display:none before
+                    // Plotly measures the container -- otherwise it draws into a 0x0 box and
+                    // never re-detects the real size once the div becomes visible again.
+                    this.$nextTick(() => {
+                        this.plotBodyComp();
+                        this.plotPopulation();
+                    });
                 });
         },
         async fetchData(){
@@ -318,7 +323,7 @@ export default {
                 margin: { t: 30 },
             };
 
-            Plotly.newPlot(plot, traces, layout);
+            Plotly.newPlot(plot, traces, layout, { responsive: true });
             plot.removeAllListeners('plotly_click');
             plot.on('plotly_click', (evt) => this.handlePointClick(evt));
         },
@@ -378,7 +383,7 @@ export default {
                 margin: { t: 30 },
             };
 
-            Plotly.newPlot(plot, traces, layout);
+            Plotly.newPlot(plot, traces, layout, { responsive: true });
             plot.removeAllListeners('plotly_click');
             plot.on('plotly_click', (evt) => this.handlePointClick(evt));
         },
@@ -458,148 +463,148 @@ export default {
 
 <template>
 
-<div class=" flex justify-center items-center w-full p-8 content-center mx-auto">
-    <div class="inline-block grow text-accent-400 text-xl flex-1"> Patient ID:
-        <div class="inline-block text-ink-primary">
-            {{ patientID }}
+<div class="w-3/4 mx-auto p-6">
+
+    <!-- Page header -->
+    <div class="flex items-end justify-between gap-4 pb-6 mb-6 border-b border-line-subtle">
+        <div>
+            <p class="text-ink-muted text-xs font-bold uppercase tracking-wide">Patient</p>
+            <p class="text-ink-primary text-3xl font-bold tracking-tight">{{ patientID }}</p>
+        </div>
+        <div class="flex gap-3">
+            <Button variant="secondary" :loading="reportLoading" @click="generateReport();">
+                 Generate report
+            </Button>
+            <Button variant="secondary" @click="viewPredictions();">
+                 View predictions
+            </Button>
         </div>
     </div>
-    <div class="align-right flex gap-3">
-        <Button variant="secondary" :loading="reportLoading" @click="generateReport();">
-             Generate report
-        </Button>
-        <Button variant="secondary" @click="viewPredictions();">
-             View predictions
-        </Button>
-    </div>
-</div>
-<div>
-    <!-- Add + delete weight -->
-    <div class="relative flex items-center w-full p-8 content-center mx-auto">
-        <div class="inline-block grow text-accent-400 text-l flex-1"> Add weight (in kg) and assessment date :
-            <form @submit.prevent="addWeight();" class="inline-flex items-center gap-3">
-            <input v-model=this.weight step="any" type="number" class="bg-surface-raised border border-line-subtle rounded text-ink-primary text-sm h-10 px-2 focus:outline-none focus:ring-2 focus:ring-brand-500" required/>
-            <input v-model=this.date type="date" class="bg-surface-raised border border-line-subtle rounded text-ink-primary text-sm h-10 px-2 focus:outline-none focus:ring-2 focus:ring-brand-500" required/>
+
+    <!-- Add weight -->
+    <div class="bg-surface-card border border-line-subtle rounded p-4 mb-6">
+        <p class="text-ink-secondary text-sm font-bold pb-3">Add weight entry</p>
+        <form @submit.prevent="addWeight();" class="flex flex-wrap items-end gap-3">
+            <div>
+                <label class="block text-ink-muted text-xs pb-1">Weight (kg)</label>
+                <input v-model=this.weight step="any" type="number" class="bg-surface-raised border border-line-subtle rounded text-ink-primary text-sm h-10 px-2 focus:outline-none focus:ring-2 focus:ring-brand-500" required/>
+            </div>
+            <div>
+                <label class="block text-ink-muted text-xs pb-1">Assessment date</label>
+                <input v-model=this.date type="date" class="bg-surface-raised border border-line-subtle rounded text-ink-primary text-sm h-10 px-2 focus:outline-none focus:ring-2 focus:ring-brand-500" required/>
+            </div>
             <Button type="submit" variant="primary"> Add Entry </Button>
-            </form>
+        </form>
+    </div>
 
+    <!-- Weight Table -->
+    <div class="overflow-x-auto mb-6">
+        <table class="w-full text-sm text-left border-line-subtle bg-surface-card">
+            <thead class="text-sm text-ink-primary">
+                <tr>
+                    <th scope="col" class="px-6 py-3">
+                        Assessment Date
+                    </th>
+                    <th scope="col" class="px-6 py-3">
+                        Weight (in kg)
+                    </th>
+                    <th scope="col" class="px-6 py-3">
+                        % weight change from first measurement
+                    </th>
+                    <th scope="col" class="px-6 py-3">
+
+                    </th>
+                </tr>
+            </thead>
+            <tbody class="text-sm text-ink-primary bg-surface-raised">
+                <!-- Rows go here -->
+                <tr v-for="item in this.weights" :key="item[0]">
+                    <th scope="col" class="px-6 py-3">
+                        {{ item[0] }}
+                    </th>
+                    <th scope="col" class="px-6 py-3">
+                        {{ item[1] }}
+                    </th>
+                    <th scope="col" class="px-6 py-3">
+                        {{ item[2] }}
+                    </th>
+                    <th scope="col" class="px-6 py-3" >
+                        <button type="button" class="text-red-600 dark:text-red-400 font-bold hover:text-red-500 dark:hover:text-red-300" :aria-label="`Delete weight entry from ${item[0]}`" @click="DeleteWeight(item[0]);">DELETE</button>
+                    </th>
+                </tr>
+            </tbody>
+        </table>
+    </div>
+
+    <div class="mb-6">
+        <div id="plot" class="h-[450px] rounded overflow-hidden border border-line-subtle"></div>
+    </div>
+
+    <!-- Body composition filters -->
+    <div>
+        <div v-if="filterOptionsLoading">
+            <LoadingState label="Loading available scan data..." />
+        </div>
+        <div v-else-if="!filterOptions.length" class="text-ink-muted text-sm py-4">
+            No completed segmentations found for this patient yet.
+        </div>
+        <div v-else class="bg-surface-card border border-line-subtle rounded p-4">
+            <div class="grid grid-cols-1 md:grid-cols-4 gap-4">
+                <div>
+                    <label class="block text-ink-secondary text-sm pb-1">Vertebra</label>
+                    <Multiselect
+                        v-model="selectedVertebrae"
+                        :options="availableVertebrae"
+                        :multiple="true"
+                        :close-on-select="false"
+                        :clear-on-select="false"
+                        placeholder="Select vertebrae"
+                    />
+                </div>
+                <div>
+                    <label class="block text-ink-secondary text-sm pb-1">Compartment</label>
+                    <Multiselect
+                        v-model="selectedCompartments"
+                        :options="availableCompartments"
+                        :multiple="true"
+                        :close-on-select="false"
+                        :clear-on-select="false"
+                        placeholder="Select compartments"
+                    />
+                </div>
+                <div>
+                    <Select v-model="selectedModality" label="Modality" :options="availableModalities" placeholder="Select modality" />
+                </div>
+                <div>
+                    <Select v-model="metric" label="Metric" :options="metricOptions" />
+                </div>
+            </div>
+        </div>
+
+        <!-- Body composition trend chart -->
+        <div class="mt-4">
+            <div v-if="bodyCompLoading">
+                <LoadingState label="Loading body composition trend..." />
+            </div>
+            <div v-else-if="!combos.length" class="text-ink-muted text-sm py-4">
+                Select at least one vertebra and compartment to plot a trend.
+            </div>
+            <div v-show="!bodyCompLoading && combos.length" id="bodycomp-plot" class="h-[450px] rounded overflow-hidden border border-line-subtle"></div>
+        </div>
+
+        <!-- Population comparison chart -->
+        <div class="mt-6">
+            <div class="text-ink-secondary text-sm pb-2">How this patient compares to the rest of the project</div>
+            <div v-show="!bodyCompLoading && combos.length" id="population-plot" class="h-[400px] rounded overflow-hidden border border-line-subtle"></div>
+            <div v-if="percentileCallouts.length" class="flex flex-wrap gap-4 pt-3 text-sm text-ink-secondary">
+                <div v-for="c in percentileCallouts" :key="c.key">
+                    <span class="text-accent-400 font-bold">{{ c.key }}</span> — latest measurement: {{ c.value.toFixed(1) }} {{ c.unit }}, {{ c.percentile }}th percentile for this project
+                </div>
+            </div>
         </div>
     </div>
+
 </div>
-
-<!-- Weight Table -->
-
-
-<div class="relative align-center overflow-x-auto p-3">
-    <table class="w-3/4 text-sm text-left border-line-subtle bg-surface-card">
-        <thead class="text-sm text-ink-primary">
-            <tr>
-                <th scope="col" class="px-6 py-3">
-                    Assessment Date
-                </th>
-                <th scope="col" class="px-6 py-3">
-                    Weight (in kg)
-                </th>
-                <th scope="col" class="px-6 py-3">
-                    % weight change from first measurement
-                </th>
-                <th scope="col" class="px-6 py-3">
-
-                </th>
-            </tr>
-        </thead>
-        <tbody class="text-sm text-ink-primary bg-surface-raised">
-            <!-- Rows go here -->
-            <tr v-for="item in this.weights" :key="item[0]">
-                <th scope="col" class="px-6 py-3">
-                    {{ item[0] }}
-                </th>
-                <th scope="col" class="px-6 py-3">
-                    {{ item[1] }}
-                </th>
-                <th scope="col" class="px-6 py-3">
-                    {{ item[2] }}
-                </th>
-                <th scope="col" class="px-6 py-3" >
-                    <button type="button" class="text-red-600 dark:text-red-400 font-bold hover:text-red-500 dark:hover:text-red-300" :aria-label="`Delete weight entry from ${item[0]}`" @click="DeleteWeight(item[0]);">DELETE</button>
-                </th>
-            </tr>
-        </tbody>
-    </table>
-
-</div>
-
-
-<div class="w-3/4 mx-auto p-3">
-    <div id="plot" class="h-[450px] rounded overflow-hidden border border-line-subtle"></div>
-</div>
-
-
-<!-- Body composition filters -->
-<div class="w-3/4 mx-auto p-3">
-    <div v-if="filterOptionsLoading">
-        <LoadingState label="Loading available scan data..." />
-    </div>
-    <div v-else-if="!filterOptions.length" class="text-ink-muted text-sm py-4">
-        No completed segmentations found for this patient yet.
-    </div>
-    <div v-else class="bg-surface-card border border-line-subtle rounded p-4">
-        <div class="grid grid-cols-1 md:grid-cols-4 gap-4">
-            <div>
-                <label class="block text-ink-secondary text-sm pb-1">Vertebra</label>
-                <Multiselect
-                    v-model="selectedVertebrae"
-                    :options="availableVertebrae"
-                    :multiple="true"
-                    :close-on-select="false"
-                    :clear-on-select="false"
-                    placeholder="Select vertebrae"
-                />
-            </div>
-            <div>
-                <label class="block text-ink-secondary text-sm pb-1">Compartment</label>
-                <Multiselect
-                    v-model="selectedCompartments"
-                    :options="availableCompartments"
-                    :multiple="true"
-                    :close-on-select="false"
-                    :clear-on-select="false"
-                    placeholder="Select compartments"
-                />
-            </div>
-            <div>
-                <Select v-model="selectedModality" label="Modality" :options="availableModalities" placeholder="Select modality" />
-            </div>
-            <div>
-                <Select v-model="metric" label="Metric" :options="metricOptions" />
-            </div>
-        </div>
-    </div>
-
-    <!-- Body composition trend chart -->
-    <div class="mt-4">
-        <div v-if="bodyCompLoading">
-            <LoadingState label="Loading body composition trend..." />
-        </div>
-        <div v-else-if="!combos.length" class="text-ink-muted text-sm py-4">
-            Select at least one vertebra and compartment to plot a trend.
-        </div>
-        <div v-show="!bodyCompLoading && combos.length" id="bodycomp-plot" class="h-[450px] rounded overflow-hidden border border-line-subtle"></div>
-    </div>
-
-    <!-- Population comparison chart -->
-    <div class="mt-6">
-        <div class="text-ink-secondary text-sm pb-2">How this patient compares to the rest of the project</div>
-        <div v-show="!bodyCompLoading && combos.length" id="population-plot" class="h-[400px] rounded overflow-hidden border border-line-subtle"></div>
-        <div v-if="percentileCallouts.length" class="flex flex-wrap gap-4 pt-3 text-sm text-ink-secondary">
-            <div v-for="c in percentileCallouts" :key="c.key">
-                <span class="text-accent-400 font-bold">{{ c.key }}</span> — latest measurement: {{ c.value.toFixed(1) }} {{ c.unit }}, {{ c.percentile }}th percentile for this project
-            </div>
-        </div>
-    </div>
-</div>
-
-<!-- List images available -->
 
 </template>
 
