@@ -56,3 +56,15 @@ If you'd rather not script it, the frontend's **Submit Jobs** page (`/submit_job
 <a name="contribute"></a>
 Feedback is appreciated, please open a new issue if you have any issues or suggestions. For code modifications, open a new pull request.
 
+## Citation
+If you use this tool please cite as follows:
+
+```
+@software{
+    Donal_McSweeney_ABC_Toolkit,
+    author = {McSweeney, Donal and Ingram, Samuel and McWilliam, Alan},
+    license = {Apache-2.0},
+    title = {{ABC Toolkit}},
+    url = {https://github.com/DMcSweeney/ABC-Toolkit}
+}
+```
