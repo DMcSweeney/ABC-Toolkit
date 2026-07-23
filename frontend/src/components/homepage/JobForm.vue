@@ -167,7 +167,7 @@ export default {
             <label class="block text-ink-secondary text-sm pb-1">
                 CSV file (one row per scan; required column "input_path"; optional "job_type" of spine/segment/full, plus any other request argument as a column)
             </label>
-            <label class="inline-block bg-surface-raised hover:border hover:border-line-default hover:cursor-pointer hover:bg-line-subtle rounded h-10 leading-10 px-4 text-green-500 font-bold text-xl" for="file-input">
+            <label class="inline-block bg-surface-raised hover:border hover:border-line-default hover:cursor-pointer hover:bg-line-subtle rounded h-10 leading-10 px-4 text-green-700 dark:text-green-500 font-bold text-xl" for="file-input">
                 {{ csvFile ? csvFile.name : 'Choose CSV file' }}
             </label>
             <input ref="csvFileInput" id="file-input" type="file" @change="handleFileSelect" accept="text/csv,.csv" hidden>

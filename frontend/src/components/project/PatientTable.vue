@@ -45,7 +45,7 @@ export default {
         <fwb-table-cell> <span class="text-xs text-ink-secondary"> {{value.vertebrae}} </span></fwb-table-cell>
 
 
-        <fwb-table-cell v-if="value.rtstruct_detected === 'not detected'"> <NoSymbolIcon class="size-6 text-red-400 mx-auto"/>  </fwb-table-cell>
+        <fwb-table-cell v-if="value.rtstruct_detected === 'not detected'"> <NoSymbolIcon class="size-6 text-red-600 dark:text-red-400 mx-auto"/>  </fwb-table-cell>
         <fwb-table-cell v-else> <CheckCircleIcon class="size-6 text-brand-400 mx-auto"/> </fwb-table-cell>
         <fwb-table-cell>
         <router-link :to="`${this.$route.path}/weights/${key}`" :aria-label="`View weights for patient ${key}`"> <ChevronDoubleRightIcon class="size-6 text-ink-secondary hover:text-brand-400 hover:font-bold" /> </router-link>

@@ -6,6 +6,7 @@ import api from '@/api/client';
 import Modal from '../ui/Modal.vue';
 import Spinner from '../ui/Spinner.vue';
 import Badge from '../ui/Badge.vue';
+import Popover from '../ui/Popover.vue';
 import failureForm from './FailureForm_v2.vue';
 import Multiselect from 'vue-multiselect';
 import { useToastStore } from '@/stores/toast';
@@ -46,8 +47,16 @@ export default {
             qc_report: Object(),// Object for holding values of the QC report -- e.g. failure modes, notes, etc...
             total_images: 0,
             passed_images: 0, // Num images that passed QA
-            pass_rate: 0 // Placeholder for the image pass rate (num. images passed QA / total images)
+            pass_rate: 0, // Placeholder for the image pass rate (num. images passed QA / total images)
+            showFilterMenu: false, // Whether the "Filter patients by" dropdown is open
+            debugInfoCache: {}, // Raw images-doc info for the "more info" popover, keyed by series uuid
+            debugInfoLoading: false,
         }
+    },
+    computed: {
+        debugInfo() {
+            return this.debugInfoCache[this.current_uuid] || null;
+        },
     },
 
     methods: {
@@ -62,49 +71,50 @@ export default {
                 this.parseAcquisitionDate(this.imageObj[patientID][a]) - this.parseAcquisitionDate(this.imageObj[patientID][b])
             );
         },
-        async fetchPatientList() {
-            // Get JSON object of ALL patients and their images 
+        fetchPatientList() {
+            // Get JSON object of ALL patients and their images
             // TODO only fetch patient IDs? then make another call to fetch UIDs for that patient? Currently, might take up a lot of mem. on big projects...
-            await api.get('/api/patient_qa/fetch_patient_list', { params: { project: this.project, vertebra: this.vertebra } })
+            return api.get('/api/patient_qa/fetch_patient_list', { params: { project: this.project, vertebra: this.vertebra } })
                 .then((res) => {
                 this.imageObj = res.data.image_dict;
                 this.patientList = Object.keys(this.imageObj);
-                if (Object.keys(this.$route.params.patient_id).length !== 0) {
-                    // if patient id in query string
-                    this.currentPID = this.$route.params.patient_id;
-                } else{
-                    // Filter based on TODO/success/fail and select a random patient
-                    this.patientIdx = Math.floor(Math.random()*this.patientList.length)
-                    this.currentPID = this.patientList[this.patientIdx]; // Select a random patient to show first
-                }
-                this.idList = this.sortedIdList(this.currentPID);
             })
                 .catch(() => {
                 // Error already surfaced via toast by the shared api client.
             });
-
-            // Also fetch the statuses linked with patient IDs and use these to filter search
-            this.fetchFilteredList();
         },
         fetchFilteredList(){
-            api.get('/api/patient_qa/get_filtered_patient_list', { params: { project: this.project, vertebra: this.vertebra } })
+            // Fetch the statuses linked with patient IDs, used both to filter search and to
+            // pick a sensible starting patient (prefer to-do, then failed, then passed).
+            return api.get('/api/patient_qa/get_filtered_patient_list', { params: { project: this.project, vertebra: this.vertebra } })
                 .then((res) => {
-                    this.statusObj= res.data.status_dict;
-                    // If to-do list is not empty, select a patient at random
-                    if (this.statusObj['to-do'].length !== 0) {
-                        this.patientIdx = Math.floor(Math.random()*this.statusObj['to-do'].length)
-                        this.currentPID = this.statusObj['to-do'][this.patientIdx]; // Select a random patient to show first
-                    } else if (this.statusObj['failed'].length !== 0) { // Otheriwse get a patient who failed
-                        this.patientIdx = Math.floor(Math.random()*this.statusObj['failed'].length)
-                        this.currentPID = this.statusObj['failed'][this.patientIdx]; // Select a random patient to show first
-                    } else {
-                        this.patientIdx = Math.floor(Math.random()*this.statusObj['passed'].length)
-                        this.currentPID = this.statusObj['passed'][this.patientIdx]; // Select a random patient to show first
-                    }
+                    this.statusObj = res.data.status_dict;
                 })
                 .catch(() => {
                     // Error already surfaced via toast by the shared api client.
             });
+        },
+        selectInitialPatient(){
+            // Decide which patient to show first. An explicit route param wins; otherwise
+            // prefer a to-do patient, then failed, then passed, falling back to any patient.
+            // patientList and statusObj must both already be populated before calling this —
+            // deciding currentPID before that data has arrived is what caused the chip strip
+            // to render empty and the patient index to desync from patientList.
+            if (Object.keys(this.$route.params.patient_id).length !== 0) {
+                this.currentPID = this.$route.params.patient_id;
+            } else if (this.statusObj['to-do'].length !== 0) {
+                this.currentPID = this.statusObj['to-do'][Math.floor(Math.random() * this.statusObj['to-do'].length)];
+            } else if (this.statusObj['failed'].length !== 0) {
+                this.currentPID = this.statusObj['failed'][Math.floor(Math.random() * this.statusObj['failed'].length)];
+            } else if (this.statusObj['passed'].length !== 0) {
+                this.currentPID = this.statusObj['passed'][Math.floor(Math.random() * this.statusObj['passed'].length)];
+            } else {
+                this.currentPID = this.patientList[Math.floor(Math.random() * this.patientList.length)];
+            }
+            // patientIdx must always be an index into patientList (the array NextPatient/
+            // PreviousPatient actually page through) — never an index into a statusObj bucket.
+            this.patientIdx = this.patientList.indexOf(this.currentPID);
+            this.idList = this.sortedIdList(this.currentPID);
         },
         GetQAImage(_id) {
             // Wait for patient list to run, then request the relevant image, given the _id
@@ -283,16 +293,42 @@ export default {
             .catch(() => {
                 // Error already surfaced via toast by the shared api client.
             })
-        }
+        },
+        handleClickOutsideFilter(event) {
+            if (this.showFilterMenu && this.$refs.filterMenuRoot && !this.$refs.filterMenuRoot.contains(event.target)) {
+                this.showFilterMenu = false;
+            }
+        },
+        fetchDebugInfo() {
+            // Lazily fetch the raw images-collection doc for the "more info" popover, cached
+            // per scan so re-opening/re-hovering doesn't refetch.
+            if (this.debugInfoCache[this.current_uuid]) return;
+            this.debugInfoLoading = true;
+            api.get('/api/database/get_input_args', { params: { _id: this.current_uuid, project: this.project } })
+                .then((res) => {
+                    this.debugInfoCache[this.current_uuid] = res.data.data;
+                })
+                .catch(() => {
+                    // Error already surfaced via toast by the shared api client.
+                })
+                .finally(() => {
+                    this.debugInfoLoading = false;
+                });
+        },
     },
     async created() {
-        await this.fetchPatientList();
+        await Promise.all([this.fetchPatientList(), this.fetchFilteredList()]);
+        this.selectInitialPatient();
         const _id = this.idList[this.seriesIdx];
         this.GetQAImage(_id);
     },
     mounted() {
+        document.addEventListener('click', this.handleClickOutsideFilter);
     },
-    components: {Modal, Spinner, Badge, failureForm, Multiselect}
+    beforeUnmount() {
+        document.removeEventListener('click', this.handleClickOutsideFilter);
+    },
+    components: {Modal, Spinner, Badge, Popover, failureForm, Multiselect}
 }
 
 
@@ -330,23 +366,24 @@ export default {
             <multiselect v-model="this.currentPID" :options="this.patientList" :close-on-select="true" :allow-empty="false" @select="changePatient"></multiselect>
         </div>
 
-        <div class="justify-center grid w-full">
-            <button id="dropdownBgHoverButton" data-dropdown-toggle="dropdownBgHover"
-            class="text-ink-primary bg-brand-600 hover:bg-brand-700 h-10 w-40 font-medium border border-line-subtle shadow-inner rounded inline-flex text-center p-4 items-center justify-center transition-colors duration-150" type="button">Filter patients by
+        <div class="relative justify-center grid w-full" ref="filterMenuRoot">
+            <button id="dropdownBgHoverButton"
+            class="text-ink-primary bg-brand-600 hover:bg-brand-700 h-10 w-40 font-medium border border-line-subtle shadow-inner rounded inline-flex text-center p-4 items-center justify-center transition-colors duration-150"
+            type="button" :aria-expanded="showFilterMenu" @click="showFilterMenu = !showFilterMenu">Filter patients by
             </button>
 
             <!-- Dropdown menu -->
-            <div id="dropdownBgHover" class="z-10 hidden w-48 bg-surface-card rounded-lg shadow-lg shadow-black/40 border border-line-subtle">
+            <div v-if="showFilterMenu" class="absolute top-full mt-1 z-10 w-48 bg-surface-card rounded-lg shadow-lg shadow-black/40 border border-line-subtle">
                 <ul class="p-3 space-y-1 text-sm text-ink-secondary" aria-labelledby="dropdownBgHoverButton">
-                <li v-for="elem in this.statusOptions">
+                <li v-for="elem in this.statusOptions" :key="elem">
                     <div class="flex items-center p-2 rounded-sm hover:bg-brand-600/20">
-                    <input id="checkbox-item" type="checkbox" v-model="this.filterStatus[elem]" class="w-4 h-4 text-brand-500 bg-surface-raised border-line-subtle rounded-sm">
-                    <label for="checkbox-item" class="w-full ms-2 text-sm font-medium text-ink-primary rounded-sm">{{elem}}</label>
+                    <input :id="`checkbox-${elem}`" type="checkbox" v-model="this.filterStatus[elem]" class="w-4 h-4 text-brand-500 bg-surface-raised border-line-subtle rounded-sm">
+                    <label :for="`checkbox-${elem}`" class="w-full ms-2 text-sm font-medium text-ink-primary rounded-sm">{{elem}}</label>
                     </div>
                 </li>
                 </ul>
                 <div class="flex content-center justify-center pb-2">
-                    <button class="text-ink-primary bg-brand-600 hover:bg-brand-700 w-1/3 h-8 font-medium rounded text-center transition-colors duration-150" type="button" @click="filterPatients();">Submit
+                    <button class="text-ink-primary bg-brand-600 hover:bg-brand-700 w-1/3 h-8 font-medium rounded text-center transition-colors duration-150" type="button" @click="filterPatients(); showFilterMenu = false;">Submit
                     </button>
                 </div>
             </div>
@@ -392,14 +429,31 @@ export default {
 
 </div>
 
-<div class="flex content-center items-center mx-auto w-3/4 py-4">
-    <div class="grid grid-cols-4 gap-4 w-full place-items-center">
-        <div> <a class="text-accent-400">Input Path: </a> <a class="text-ink-muted "> {{ this.input_path }}</a> </div>
-        <div class="grid col-span-2"> <a class="text-accent-400">Acquisition Date: </a> <a class="text-ink-muted "> {{ this.acquisition_date }}  </a> </div>
-        <div class="flex-1"> <a class="text-accent-400">Level: </a> <a class="text-ink-muted "> {{ this.vertebra }}  </a> </div>
-
-    </div>
-
+<div class="flex justify-center items-center mx-auto w-3/4 py-4">
+    <Popover align="left" @open="fetchDebugInfo">
+        <template #content>
+            <p class="text-ink-primary font-bold pb-2">Scan details</p>
+            <div v-if="debugInfoLoading" class="text-ink-muted">Loading...</div>
+            <dl v-else-if="debugInfo" class="grid grid-cols-[auto,1fr] gap-x-3 gap-y-1.5">
+                <dt class="text-accent-400 font-bold">Input path</dt><dd class="text-ink-secondary break-all">{{ debugInfo.input_path }}</dd>
+                <dt class="text-accent-400 font-bold">Study ID</dt><dd class="text-ink-secondary break-all">{{ debugInfo.study_uuid }}</dd>
+                <dt class="text-accent-400 font-bold">Series ID</dt><dd class="text-ink-secondary break-all">{{ current_uuid }}</dd>
+                <dt class="text-accent-400 font-bold">Modality</dt><dd class="text-ink-secondary">{{ debugInfo.modality }}</dd>
+                <dt class="text-accent-400 font-bold">Study date</dt><dd class="text-ink-secondary">{{ debugInfo.study_date }}</dd>
+                <dt class="text-accent-400 font-bold">Series date</dt><dd class="text-ink-secondary">{{ debugInfo.series_date }}</dd>
+                <dt class="text-accent-400 font-bold">Acquisition date</dt><dd class="text-ink-secondary">{{ debugInfo.acquisition_date }}</dd>
+                <dt class="text-accent-400 font-bold">Level</dt><dd class="text-ink-secondary">{{ vertebra }}</dd>
+                <dt class="text-accent-400 font-bold">Pixel spacing</dt><dd class="text-ink-secondary">{{ debugInfo.X_spacing }} × {{ debugInfo.Y_spacing }}</dd>
+                <dt class="text-accent-400 font-bold">Slice thickness</dt><dd class="text-ink-secondary">{{ debugInfo.slice_thickness }}</dd>
+                <dt class="text-accent-400 font-bold">Labelling done</dt><dd class="text-ink-secondary">{{ debugInfo.labelling_done ? 'Yes' : 'No' }}</dd>
+                <dt class="text-accent-400 font-bold">Segmentation done</dt><dd class="text-ink-secondary">{{ debugInfo.segmentation_done ? 'Yes' : 'No' }}</dd>
+                <template v-if="debugInfo.rtstruct_path">
+                    <dt class="text-accent-400 font-bold">RTSTRUCT</dt><dd class="text-ink-secondary break-all">{{ debugInfo.rtstruct_path }}</dd>
+                </template>
+            </dl>
+            <div v-else class="text-ink-muted">No info available.</div>
+        </template>
+    </Popover>
 </div>
 
 </div>
