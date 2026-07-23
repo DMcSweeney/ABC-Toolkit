@@ -416,7 +416,7 @@ export default {
 <div class="bg-surface-header flex-grow mt-6">
     <div class="mt-6">
     <p class="text-ink-muted text-xs px-2 pb-1 text-center">{{ idList.length }} scan{{ idList.length === 1 ? '' : 's' }} for this patient, oldest to newest</p>
-    <div class="flex gap-2 overflow-x-auto pb-2 px-2 justify-center">
+    <div class="flex gap-2 overflow-x-auto pb-2 px-2 justify-start">
         <button v-for="item in this.idList" :key="item" type="button"
             class="shrink-0 px-4 h-10 rounded-full border font-bold whitespace-nowrap transition-colors duration-150"
             :class="active_uid(item) ? 'bg-brand-500/15 border-brand-400 text-brand-300' : 'bg-surface-raised border-line-subtle text-ink-secondary hover:text-brand-400 hover:border-brand-400/50'"
