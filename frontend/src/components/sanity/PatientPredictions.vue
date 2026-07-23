@@ -420,7 +420,7 @@ export default {
     </div>
     <!-- Image -->
 
-    <div class="relative mt-4">
+    <div class="relative flex justify-center mt-4">
         <div v-if="imageLoading" class="absolute inset-0 flex items-center justify-center">
             <Spinner size="lg" />
         </div>

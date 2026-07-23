@@ -3,9 +3,11 @@
 @tailwind utilities;
 
 :root {
-  /* Light theme (default) — RGB triplets so Tailwind's opacity modifiers work. */
-  --color-surface-header: 255 255 255;
-  --color-surface-app: 248 250 252;
+  /* Light theme (default) — RGB triplets so Tailwind's opacity modifiers work.
+     Dimmed on purpose: the page canvas is a soft slate gray rather than white, with white
+     cards popping against it for elevation — not a stark all-white page. */
+  --color-surface-header: 241 245 249;
+  --color-surface-app: 226 232 240;
   --color-surface-card: 255 255 255;
   --color-surface-raised: 241 245 249;
 
@@ -13,8 +15,8 @@
   --color-ink-secondary: 71 85 105;
   --color-ink-muted: 148 163 184;
 
-  --color-line-subtle: 226 232 240;
-  --color-line-default: 203 213 225;
+  --color-line-subtle: 203 213 225;
+  --color-line-default: 148 163 184;
 
   /* brand/accent shade numbers are deliberately not the same lightness as dark mode —
      see the comment in tailwind.config.js. */
@@ -36,17 +38,19 @@
 }
 
 [data-theme="dark"] {
-  --color-surface-header: 10 14 20;
-  --color-surface-app: 13 17 23;
-  --color-surface-card: 22 27 34;
-  --color-surface-raised: 33 38 45;
+  /* Lightened from a near-black GitHub-dimmed style up to a standard slate ramp, so it reads
+     as a comfortable dark theme rather than pitch black. */
+  --color-surface-header: 15 23 42;
+  --color-surface-app: 30 41 59;
+  --color-surface-card: 51 65 85;
+  --color-surface-raised: 71 85 105;
 
-  --color-ink-primary: 230 237 243;
-  --color-ink-secondary: 173 186 199;
-  --color-ink-muted: 110 118 129;
+  --color-ink-primary: 241 245 249;
+  --color-ink-secondary: 203 213 225;
+  --color-ink-muted: 148 163 184;
 
-  --color-line-subtle: 48 54 61;
-  --color-line-default: 61 68 77;
+  --color-line-subtle: 71 85 105;
+  --color-line-default: 100 116 139;
 
   --color-brand-50: 236 253 245;
   --color-brand-300: 110 231 183;
@@ -59,10 +63,10 @@
   --color-accent-400: 56 189 248;
   --color-accent-500: 14 165 233;
 
-  --gradient-tint-1: 16 185 129 / 0.06;
-  --gradient-tint-2: 14 165 233 / 0.05;
-  --scrollbar-thumb: 61 68 77;
-  --scrollbar-thumb-hover: 77 84 93;
+  --gradient-tint-1: 16 185 129 / 0.08;
+  --gradient-tint-2: 14 165 233 / 0.06;
+  --scrollbar-thumb: 71 85 105;
+  --scrollbar-thumb-hover: 100 116 139;
 }
 
 body::before {

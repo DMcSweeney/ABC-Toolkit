@@ -374,7 +374,7 @@ export default {
 
 
     <!-- MAIN IMAGE -->
-    <div class="relative flex w-full p-5 hover:h-full ">
+    <div class="relative flex w-full justify-center p-5 hover:h-full ">
         <div class="relative inline-block object-fill h-full hover:border hover:border-line-default">
             <div v-if="imageLoading" class="absolute inset-0 flex items-center justify-center">
                 <Spinner size="lg" />

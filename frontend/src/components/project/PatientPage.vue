@@ -108,12 +108,12 @@ export default {
             // hex palette per theme, matching the surface/ink/line/brand/accent token values.
             if (this.themeStore.theme === 'light') {
                 return {
-                    background: '#ffffff', font: '#475569', grid: '#e2e8f0', zeroline: '#cbd5e1',
+                    background: '#ffffff', font: '#475569', grid: '#cbd5e1', zeroline: '#94a3b8',
                     weightLine: '#0284c7', bodyCompLine: '#059669',
                 };
             }
             return {
-                background: '#161b22', font: '#adbac7', grid: '#30363d', zeroline: '#3d444d',
+                background: '#334155', font: '#cbd5e1', grid: '#475569', zeroline: '#64748b',
                 weightLine: '#38bdf8', bodyCompLine: '#34d399',
             };
         },
