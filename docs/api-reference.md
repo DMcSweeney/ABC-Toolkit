@@ -171,6 +171,14 @@ Returns `[{"patient_id": ..., "series_uuids": [...]}, ...]`.
 
 Returns the set of unique vertebral levels that have **any** segmentation result recorded for the project. Despite the name, this does not filter by QA status — it's really "which levels exist in this project," used by the frontend to build the QA navigation menu.
 
+### `GET /api/database/get_patient_filter_options`
+| Arg | Required | Description |
+|---|---|---|
+| `project` | yes | Project name. |
+| `patient_id` | yes | Patient id. |
+
+Returns `{"data": [{"vertebra": ..., "compartment": ..., "modality": ..., "acquisition_date": ...}, ...]}` — every (vertebra, compartment, modality) combination this specific patient actually has completed segmentation data for, deduplicated (one entry per combo, tagged with the most recent acquisition date seen for it). Compartment options are read strictly from the literal keys stored in `statistics` — this deliberately does **not** reuse the "offer IMAT whenever skeletal_muscle is present" heuristic used elsewhere (e.g. `patientQA.py`), since that heuristic doesn't check modality and can offer IMAT as an option even where it was never actually computed (e.g. CBCT). Used by the frontend to build dynamic filter dropdowns instead of a hardcoded vertebra/compartment list.
+
 ### `GET /api/database/get_labelling_status`
 | Arg | Required | Description |
 |---|---|---|
@@ -260,8 +268,24 @@ Body: `{"_id": <string, required>, "project": <string, required>, "compartment":
 | `patient_id` | yes | string | Patient id. |
 | `vertebra` | yes | string | Vertebral level to report on. |
 | `compartment` | yes | string | Tissue compartment to report on. |
+| `modality` | no | string | If given, only include series whose `images.modality` matches. |
 
-Returns a longitudinal series across all of the patient's scans in the project: `[(acquisition_date, area_or_pct_change_cm2, density_or_pct_change_HU), ...]`, sorted by date, with area converted from voxels to cm² using pixel spacing and both values expressed as **% change relative to the earliest (baseline) scan** (the first tuple in the list is the baseline itself, with the raw values, not a 0% delta). Returns HTTP 500 if the patient has no segmentation entries in the project.
+Returns a longitudinal series across the patient's scans in the project for this (vertebra, compartment[, modality]) combination: `{"data": [{"date": ..., "series_uuid": ..., "area": <cm²>, "density": <HU>, "area_pct_change": ..., "density_pct_change": ..., "qc_status": 1|2}, ...]}`, sorted by date, with area converted from voxels to cm² using pixel spacing, both absolute values **and** % change relative to the earliest (baseline) scan returned, and `series_uuid`/`qc_status` included per point. **Failed-QC series (`overall_qc_state.<vertebra> == 0`) are excluded before the baseline is chosen**, not just before display — so a failed scan can never corrupt every later point's % change even if it happened to be the earliest scan (`qc_status` in the response is therefore always `1` (pass) or `2` (todo), never `0`). Returns HTTP 500 if no matching (non-failed) series exist.
+
+### `GET /api/post_process/get_population_stats`
+| Arg | Required | Type | Description |
+|---|---|---|---|
+| `project` | yes | string | Project name. |
+| `vertebra` | yes | string | Vertebral level. |
+| `compartment` | yes | string | Tissue compartment. |
+| `modality` | no | string | If given, only include series whose `images.modality` matches. |
+
+Returns `{"data": [{"patient_id": ..., "date": ..., "area": <cm²>, "density": <HU>}, ...]}` — one row per matching series **across every patient in the project** at this (vertebra, compartment[, modality]) combination, used to plot the project-wide distribution a single patient's own measurements can be compared against. Same QC-exclusion rule as `get_stats_for_patient` (failed series are dropped, not just hidden), so the population isn't skewed by bad segmentations either.
+
+### `POST /api/post_process/generate_report`
+Body: `{"project": <string, required>, "patient_id": <string, required>, "combos": [{"vertebra": ..., "compartment": ..., "modality": ...}, ...] (required, non-empty)}`.
+
+Generates a PDF body-composition report for clinical review and returns it as a file download (`mimetype: application/pdf`). For each requested combo, fetches its trend series via the same shared logic (and QC-exclusion rule) as `get_stats_for_patient`, and renders one longitudinal chart (matplotlib, light background regardless of the caller's UI theme). Also includes a weight-history table (from the `weights` collection) and a grid of exemplar QA images — one per ~7-day window across the patient's scans, sourced from `quality_control.paths_to_sanity_images['ALL']` for the **first** combo's vertebra (v1 scope: exemplar images cover only the first requested combo's vertebra, not every selected vertebra). Written to `<OUTPUT_DIR>/<project>/<patient_id>/reports/<patient_id>_report_<timestamp>.pdf` (not deleted afterward, matching the CSV-export endpoints' persist-for-reuse convention).
 
 ---
 
