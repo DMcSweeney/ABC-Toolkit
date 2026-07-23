@@ -3,6 +3,7 @@ Endpoints for interacting with database
 
 """
 import dill
+import datetime
 import logging
 import pandas as pd
 from flask import Blueprint, request, make_response, jsonify
@@ -140,6 +141,55 @@ def get_levels_to_QA():
     res = make_response(jsonify({
         "message":f"{len(unique_levels)} unique vertebrae detected in project",
         "data": unique_levels
+    }), 200)
+    return res
+
+
+@bp.route('/api/database/get_patient_filter_options', methods=["GET"])
+def get_patient_filter_options():
+    """
+    List every (vertebra, compartment, modality) combination this patient actually has
+    completed segmentation data for, so the frontend can build filter dropdowns from real
+    data instead of a hardcoded list. Compartment options are read strictly from the literal
+    keys stored in `statistics` -- deliberately NOT synthesizing an 'IMAT' option the way
+    patientQA.py's model_bank-driven compartment list does (that rule doesn't check modality
+    and may offer IMAT as an option even where it was never actually computed, e.g. for CBCT).
+    """
+    project = request.args.get("project")
+    patient_id = request.args.get("patient_id")
+    from app import mongo
+    database = mongo.db
+
+    docs = database.segmentation.find({"project": project, "patient_id": patient_id}, {'statistics': 1, 'series_uuid': 1})
+
+    def parse_date(date_str):
+        try:
+            return datetime.datetime.strptime(date_str, "%d-%m-%Y")
+        except (ValueError, TypeError):
+            return datetime.datetime.min
+
+    # Keyed by (vertebra, compartment, modality) -> most-recent acquisition_date seen for that combo
+    combos = {}
+    for doc in docs:
+        img = database.images.find_one({'_id': doc['_id'], 'project': project}, {'modality': 1, 'acquisition_date': 1})
+        if img is None:
+            continue
+        modality = img.get('modality')
+        acquisition_date = img.get('acquisition_date')
+
+        for level_key, compartments in doc.get('statistics', {}).items():
+            vertebra = level_key.replace('-edited', '').replace('-manual', '')
+            for compartment in compartments.keys():
+                key = (vertebra, compartment, modality)
+                if key not in combos or parse_date(acquisition_date) > parse_date(combos[key]):
+                    combos[key] = acquisition_date
+
+    data = [{"vertebra": v, "compartment": c, "modality": m, "acquisition_date": d}
+            for (v, c, m), d in combos.items()]
+
+    res = make_response(jsonify({
+        "message": f"Found {len(data)} filter combinations for {patient_id}",
+        "data": data
     }), 200)
     return res
 

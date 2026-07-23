@@ -319,6 +319,12 @@ export default {
     async created() {
         await Promise.all([this.fetchPatientList(), this.fetchFilteredList()]);
         this.selectInitialPatient();
+        // An explicit ?series= query param (e.g. arriving from a PatientPage chart click)
+        // overrides the default first-image selection, so the QA view jumps straight to it.
+        const querySeries = this.$route.query.series;
+        if (querySeries && this.idList.includes(querySeries)) {
+            this.seriesIdx = this.idList.indexOf(querySeries);
+        }
         const _id = this.idList[this.seriesIdx];
         this.GetQAImage(_id);
     },

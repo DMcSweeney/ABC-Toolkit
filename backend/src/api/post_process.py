@@ -2,6 +2,7 @@
 Script containing post-processing endpoints
 """
 import os
+import io
 import logging
 from flask import Blueprint, make_response, jsonify, request, current_app, send_file
 from app import mongo
@@ -11,6 +12,16 @@ import json
 import polars as pl
 import shutil
 import datetime
+
+import matplotlib
+matplotlib.use('Agg')  # headless server-side rendering, no display available in the container
+import matplotlib.pyplot as plt
+
+from PIL import Image as PILImage
+from reportlab.lib.pagesizes import letter
+from reportlab.lib import colors
+from reportlab.lib.styles import getSampleStyleSheet
+from reportlab.platypus import SimpleDocTemplate, Paragraph, Spacer, Image as RLImage, Table, TableStyle
 
 from rt_utils import RTStructBuilder
 
@@ -370,80 +381,279 @@ def export_segmentations():
     return res
 
 
+def _fetch_patient_trend_data(database, project, patient_id, vertebra, compartment, modality=None):
+    """
+    Shared logic for building a patient's longitudinal trend series for one
+    (vertebra, compartment[, modality]) combination. Used by both the
+    get_stats_for_patient HTTP endpoint and the PDF report generator (generate_report),
+    so both apply the exact same QC-exclusion/baseline rules rather than risking two
+    diverging implementations.
+
+    Failed-QC segmentations (overall_qc_state[vertebra] == 0) are excluded *before*
+    sorting/choosing the % change baseline -- a failed scan used as the baseline would
+    corrupt every later point's relative value, even once the failed point itself is
+    hidden from display.
+    """
+    cursors = database.segmentation.find({'project': project, 'patient_id': patient_id})
+
+    data = []
+    for cursor in cursors:
+        level_stats = cursor.get('statistics', {}).get(vertebra)
+        if level_stats is None or compartment not in level_stats:
+            continue
+
+        image_query = database.images.find_one({'_id': cursor['_id'], 'project': project})
+        if image_query is None:
+            continue
+        if modality and image_query.get('modality') != modality:
+            continue
+
+        qc_query = database.quality_control.find_one({'_id': cursor['_id'], 'project': project}, {'overall_qc_state': 1})
+        qc_status = qc_query['overall_qc_state'].get(vertebra) if qc_query and 'overall_qc_state' in qc_query else 2
+        if qc_status == 0:
+            # Failed QC -- exclude entirely, don't let it become the baseline.
+            continue
+
+        try:
+            acq_date = datetime.datetime.strptime(image_query['acquisition_date'], "%d-%m-%Y").strftime("%Y-%m-%d")
+        except (ValueError, TypeError, KeyError):
+            continue
+
+        pix_area = float(image_query['X_spacing']) * float(image_query['Y_spacing'])
+        slice_dict = level_stats[compartment]
+        mean_area = np.mean([v['area (voxels)'] for v in slice_dict.values()])
+        mean_area = mean_area * pix_area / 100  # voxels -> mm2 -> cm2
+        mean_density = np.mean([v['density (HU)'] for v in slice_dict.values()])
+
+        data.append({
+            'date': acq_date,
+            'series_uuid': cursor.get('series_uuid', cursor['_id']),
+            'area': float(mean_area),
+            'density': float(mean_density),
+            'qc_status': qc_status,
+        })
+
+    if not data:
+        return []
+
+    data = sorted(data, key=lambda x: x['date'])
+    baseline = data[0]
+    for point in data:
+        point['area_pct_change'] = ((point['area'] - baseline['area']) / baseline['area']) * 100 if baseline['area'] else 0.0
+        point['density_pct_change'] = ((point['density'] - baseline['density']) / baseline['density']) * 100 if baseline['density'] else 0.0
+
+    return data
+
+
 @bp.route('/api/post_process/get_stats_for_patient', methods=['GET'])
 def get_stats_for_patient():
-    ### Get all measurements for a patient
-    # Muscle, fat
+    ### Get all measurements for a patient at one (vertebra, compartment[, modality])
     project = request.args.get("project")
     patient_id = request.args.get("patient_id")
     vertebra = request.args.get("vertebra")
     compartment = request.args.get("compartment")
-    
+    modality = request.args.get("modality")  # optional
+
     logger.info(f'Fetching body comp stats for {patient_id} in {project}')
-    from app import mongo
     database = mongo.db
-    cursors = database.segmentation.find({'project': project, 'patient_id': patient_id})
 
-    if cursors:
-        data = []
-        for cursor in cursors:
-            ## For each entry, extract series_uuid and match to date in images
-            image_query = database.images.find_one({'_id': cursor['_id']})
-            acq_date = image_query['acquisition_date']
-            acq_date = datetime.datetime.strptime(image_query['acquisition_date'], "%d-%m-%Y").strftime("%Y-%m-%d") 
-            ## Get pixel data to convert measurements to mm
-            pix_area = float(image_query['X_spacing']) * float(image_query['Y_spacing']) 
+    data = _fetch_patient_trend_data(database, project, patient_id, vertebra, compartment, modality)
 
-            ## Get stats for every compartment
-            stats = cursor['statistics']
-            areas = {}
-            densities = {}
-            for level, level_stats in stats.items():
-                if level != vertebra: continue
-                areas[level] = {}
-                densities[level] = {}
-                for compartment, slice_dict in level_stats.items():
-                    if compartment != compartment: continue
-                    ## Get mean across every slice? 
-                    #TODO make this variable ? Median? STDev
-
-                    mean_area = np.mean([v['area (voxels)'] for k, v in slice_dict.items()])
-                    mean_area *= pix_area ## Convert to mm2
-                    mean_area /= 100 ## Convert to cm2
-                    mean_density = np.mean([v['density (HU)'] for k, v in slice_dict.items()])
-
-                    areas[level].update({compartment: mean_area})
-                    densities[level].update({compartment: mean_density})
-            data.append((acq_date, areas, densities))
-        
-        data = sorted(data, key=lambda x: x[0] )
-
-        ##TODO Calc change relative to first 
-        baseline_date, baseline_area, baseline_density = data[0]
-
-        changes = [(baseline_date, baseline_area[vertebra][compartment], baseline_density[vertebra][compartment])]
-        for elem in data:
-            date = elem[0]
-            #if date == baseline_date: continue
-            area = elem[1][vertebra][compartment]
-            density = elem[2][vertebra][compartment]
-            logger.info(f"{elem[0]} - {area} - {density}")
-            area_change = (area-baseline_area[vertebra][compartment])/baseline_area[vertebra][compartment]
-            area_change *= 100
-
-            density_change = (density-baseline_density[vertebra][compartment])/baseline_density[vertebra][compartment]
-            density_change *= 100
-
-            changes.append((date, area_change, density_change))
-
-
-        res = make_response(jsonify({
-            "message": "Found stats",
-            "data": changes
-        }), 200)
-        return res
-    else:
+    if not data:
         res = make_response(jsonify({
             "message": f"No stats found for {patient_id} in {project}",
         }), 500)
         return res
+
+    res = make_response(jsonify({
+        "message": "Found stats",
+        "data": data
+    }), 200)
+    return res
+
+
+@bp.route('/api/post_process/get_population_stats', methods=['GET'])
+def get_population_stats():
+    """
+    Project-wide distribution of one (vertebra, compartment[, modality]) metric, one value
+    per matching series across every patient in the project -- used to plot where a specific
+    patient's own measurements sit relative to the rest of the project. Excludes failed-QC
+    segmentations, the same rule as get_stats_for_patient/_fetch_patient_trend_data, so the
+    population isn't skewed by bad segmentations either.
+    """
+    project = request.args.get("project")
+    vertebra = request.args.get("vertebra")
+    compartment = request.args.get("compartment")
+    modality = request.args.get("modality")
+
+    database = mongo.db
+    docs = database.segmentation.find({"project": project})
+
+    data = []
+    for doc in docs:
+        level_stats = doc.get('statistics', {}).get(vertebra)
+        if level_stats is None or compartment not in level_stats:
+            continue
+
+        image_query = database.images.find_one({'_id': doc['_id'], 'project': project})
+        if image_query is None:
+            continue
+        if modality and image_query.get('modality') != modality:
+            continue
+
+        qc_query = database.quality_control.find_one({'_id': doc['_id'], 'project': project}, {'overall_qc_state': 1})
+        qc_status = qc_query['overall_qc_state'].get(vertebra) if qc_query and 'overall_qc_state' in qc_query else 2
+        if qc_status == 0:
+            continue
+
+        try:
+            acq_date = datetime.datetime.strptime(image_query['acquisition_date'], "%d-%m-%Y").strftime("%Y-%m-%d")
+        except (ValueError, TypeError, KeyError):
+            acq_date = None
+
+        pix_area = float(image_query['X_spacing']) * float(image_query['Y_spacing'])
+        slice_dict = level_stats[compartment]
+        mean_area = np.mean([v['area (voxels)'] for v in slice_dict.values()]) * pix_area / 100
+        mean_density = np.mean([v['density (HU)'] for v in slice_dict.values()])
+
+        data.append({
+            'patient_id': doc['patient_id'],
+            'date': acq_date,
+            'area': float(mean_area),
+            'density': float(mean_density),
+        })
+
+    res = make_response(jsonify({
+        "message": f"Found {len(data)} population data points",
+        "data": data
+    }), 200)
+    return res
+
+
+@bp.route('/api/post_process/generate_report', methods=['POST'])
+def generate_report():
+    """
+    Build a clinical PDF report for a patient: a longitudinal trend chart covering the
+    requested (vertebra, compartment[, modality]) combos, a weight-history table, and a
+    grid of exemplar QA images sampled roughly weekly. Reuses _fetch_patient_trend_data
+    (the same function get_stats_for_patient calls) so the report's QC-exclusion/baseline
+    rules can never drift from what's shown on screen.
+    """
+    req = request.get_json()
+    project = req['project']
+    patient_id = req['patient_id']
+    combos = req['combos']  # [{vertebra, compartment, modality}, ...]
+
+    database = mongo.db
+
+    # 1. Trend data per combo.
+    trend_series = {}
+    for combo in combos:
+        label = f"{combo['vertebra']} · {combo['compartment']}"
+        series = _fetch_patient_trend_data(database, project, patient_id, combo['vertebra'], combo['compartment'], combo.get('modality'))
+        if series:
+            trend_series[label] = series
+
+    # 2. Render the trend chart with matplotlib -- always light/white, independent of the
+    # web app's current theme, since printed reports default to light for readability.
+    chart_buffer = None
+    if trend_series:
+        fig, ax = plt.subplots(figsize=(7, 4))
+        for label, series in trend_series.items():
+            dates = [p['date'] for p in series]
+            values = [p['area_pct_change'] for p in series]
+            ax.plot(dates, values, marker='o', label=label)
+        ax.set_xlabel('Date')
+        ax.set_ylabel('Area % change from baseline')
+        ax.set_title(f'Body composition trend — {patient_id}')
+        ax.legend(fontsize=8)
+        ax.grid(True, alpha=0.3)
+        fig.autofmt_xdate()
+        chart_buffer = io.BytesIO()
+        fig.savefig(chart_buffer, format='png', dpi=150, bbox_inches='tight')
+        plt.close(fig)
+        chart_buffer.seek(0)
+
+    # 3. Weight history.
+    weight_doc = database.weights.find_one({'_id': patient_id})
+    weight_rows = sorted(weight_doc['measurements'].items()) if weight_doc and weight_doc.get('measurements') else []
+
+    # 4. Exemplar QA images, ~1/week, for the first requested combo's vertebra (v1 scope --
+    # not every selected vertebra, documented as a deliberate simplification).
+    exemplar_images = []
+    if combos:
+        primary_vertebra = combos[0]['vertebra']
+        qc_docs = database.quality_control.find({'project': project, 'patient_id': patient_id})
+        scans = []
+        for qc in qc_docs:
+            img = database.images.find_one({'_id': qc['_id'], 'project': project})
+            if img is None:
+                continue
+            try:
+                acq_date = datetime.datetime.strptime(img['acquisition_date'], "%d-%m-%Y")
+            except (ValueError, TypeError, KeyError):
+                continue
+
+            all_paths = qc.get('paths_to_sanity_images', {}).get('ALL')
+            if all_paths is None:
+                continue
+            # 'ALL' is either a plain path string, or a {vertebra: path} dict -- same
+            # defensive check used at the existing read sites (api/sanity.py, api/patientQA.py).
+            path = all_paths.get(primary_vertebra) if isinstance(all_paths, dict) else all_paths
+            if path and os.path.exists(path):
+                scans.append((acq_date, path))
+
+        scans.sort(key=lambda x: x[0])
+        last_bucket_date = None
+        for acq_date, path in scans:
+            if last_bucket_date is None or (acq_date - last_bucket_date).days >= 7:
+                exemplar_images.append((acq_date.strftime('%Y-%m-%d'), path))
+                last_bucket_date = acq_date
+
+    # 5. Compose the PDF with ReportLab.
+    output_dir = os.path.join(current_app.config['OUTPUT_DIR'], project, patient_id, 'reports')
+    os.makedirs(output_dir, exist_ok=True)
+    timestamp = datetime.datetime.now().strftime('%Y%m%d%H%M%S')
+    output_path = os.path.join(output_dir, f'{patient_id}_report_{timestamp}.pdf')
+
+    doc = SimpleDocTemplate(output_path, pagesize=letter)
+    styles = getSampleStyleSheet()
+    story = [
+        Paragraph("Body Composition Report", styles['Title']),
+        Paragraph(f"Patient: {patient_id} &nbsp;&nbsp;&nbsp; Project: {project}", styles['Normal']),
+        Paragraph(f"Generated: {datetime.datetime.now().strftime('%Y-%m-%d %H:%M')}", styles['Normal']),
+        Spacer(1, 20),
+    ]
+
+    if chart_buffer:
+        story.append(Paragraph("Longitudinal Trend", styles['Heading2']))
+        story.append(RLImage(chart_buffer, width=450, height=257))
+        story.append(Spacer(1, 20))
+
+    if weight_rows:
+        story.append(Paragraph("Weight History", styles['Heading2']))
+        table_data = [['Date', 'Weight (kg)']] + [[d, w] for d, w in weight_rows]
+        table = Table(table_data)
+        table.setStyle(TableStyle([
+            ('BACKGROUND', (0, 0), (-1, 0), colors.HexColor('#e2e8f0')),
+            ('GRID', (0, 0), (-1, -1), 0.5, colors.grey),
+            ('FONTSIZE', (0, 0), (-1, -1), 9),
+        ]))
+        story.append(table)
+        story.append(Spacer(1, 20))
+
+    if exemplar_images:
+        story.append(Paragraph("Exemplar QA Images", styles['Heading2']))
+        for date_str, path in exemplar_images:
+            story.append(Paragraph(date_str, styles['Normal']))
+            # Preserve the source image's aspect ratio rather than forcing a fixed box.
+            with PILImage.open(path) as im:
+                w, h = im.size
+            display_width = 300
+            display_height = display_width * (h / w)
+            story.append(RLImage(path, width=display_width, height=display_height))
+            story.append(Spacer(1, 10))
+
+    doc.build(story)
+
+    return send_file(output_path, download_name=f"{patient_id}_report.pdf", as_attachment=True, mimetype="application/pdf")
