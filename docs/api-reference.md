@@ -134,7 +134,7 @@ Not meant to be called directly — this is invoked automatically by the Conques
 | `manufacturer` | yes | DICOM Manufacturer — used only to detect the CT→CBCT special case above. |
 
 Behavior by modality:
-- **CT**: files matching the request's header tags are moved from the Conquest inbox into `/data/inbox/<patient_id>/<study_uid>/<series_uid>/<modality>/`, then a spine job is submitted followed by a dependent segment job (`num_slices=1`, project `"inbox"`).
+- **CT**: files matching the request's header tags are moved from the Conquest inbox into `/data/inbox/<patient_id>/<study_uid>/<series_uid>/<modality>/`, then a spine job is submitted followed by a dependent segment job (`num_slices=1`, project `"Unassigned"`). No DICOM header field is reliable enough to auto-route scans to the correct real project (Study Description isn't consistently populated, and there's no site-specific AE-title/port routing), so everything lands in the `Unassigned` project and a human assigns it to the right project afterward via [`POST /api/database/reassign_patient`](#post-apidatabasereassign_patient) or [`POST /api/database/assign_patients_from_csv`](#post-apidatabaseassign_patients_from_csv) (surfaced in the frontend as "Assign to Project").
 - **CBCT**: looks up an existing labelled planning CT for the same `patient_id` in the `spine` Mongo collection; raises if none is found. Submits one `infer/register` job to align the CBCT onto that planning CT (see [`POST /api/jobs/infer/register`](#post-apijobsinferregister)), then one segment job per vertebral level the planning CT was labelled at (that also has a CBCT model), each depending on the registration job (`depends_on`) and with `resample=True`, `reference_scan=<planning CT id>`, `calibrate_cbct=True`, `calibration_structure="brainstem"` hardcoded — no `slice_number` is set explicitly; it's still the planning CT's own recorded slice number for that level, which only becomes valid for the CBCT once the registration job's transform has been used to resample it onto the planning CT's grid (see the `infer/segment` `slice_number` row above).
 - **RTSTRUCT**: links the struct file path to the matching planning CT's `images` Mongo entry (matched by `study_uid`, or by parsing the RTSTRUCT's `ReferencedFrameOfReferenceSequence` if no match is found by study).
 - **RTPLAN / RTDOSE**: always raises (rejected).
@@ -235,6 +235,27 @@ Body: `{"_id": <string, required>, "current_project": <string, required>, "new_p
 
 ### `POST /api/database/change_patient_id`
 Body: `{"_id": <string, required>, "current_patient_id": <string, required>, "new_patient_id": <string, required>}`. Renames the patient id on all records for the given series `_id` and moves the output directory accordingly. **Note:** `current_patient_id` is required in the request but not actually checked against the existing value — only `_id` and `new_patient_id` matter, so a wrong `current_patient_id` won't be caught.
+
+### `GET /api/database/find_patient`
+| Arg | Required | Description |
+|---|---|---|
+| `patient_id` | yes | Patient id to search for. |
+
+Cross-project lookup — deliberately **not** scoped to a single project, since it exists to find data sitting in the `Unassigned` project (or already split across others) before reassigning it. Returns `{"message": ..., "patient_id": ..., "projects": [{"project": <name>, "series": [{"_id", "series_uuid", "modality", "acquisition_date"}, ...]}, ...]}` — one entry per project this patient currently has data in. Empty `projects` list (still `200`) if nothing is found.
+
+### `POST /api/database/reassign_patient`
+Body: `{"patient_id": <string, required>, "current_project": <string, required>, "new_project": <string, required>}`. Moves every series belonging to `patient_id` within `current_project` into `new_project` — the patient-level counterpart to `change_project` (which only supports "one series by `_id`" or "every document in a project"). Project names are validated server-side (`^[A-Za-z0-9_-]+$`). Before moving anything, checks the `high`/`default`/`low` RQ queues (queued **and** running jobs) for any job whose args reference this `patient_id`; if found, returns `409` with `{"message": ..., "skipped": true}` instead of reassigning, since a spine/segment job still in flight recomputes its own `output_dir` from the request captured at enqueue time and would otherwise silently resurrect the old project's directory after the move. On success, returns `{"message": ..., "series_uuids": [...]}`.
+
+### `POST /api/database/assign_patients_from_csv`
+Bulk version of `reassign_patient` from an uploaded CSV. `multipart/form-data`, not JSON.
+
+| Form field | Required | Description |
+|---|---|---|
+| `file` | yes | CSV, one row per patient. Required column: `patient_id`. Optional per-row columns `current_project`/`new_project` override the form-level defaults below. |
+| `current_project` | no | Default project to move rows **from**. Defaults to `Unassigned`. |
+| `new_project` | conditionally | Default project to move rows **to** — required unless every row supplies its own `new_project` column. |
+
+Same in-flight-job guard and project-name validation as `reassign_patient`, applied per row. Errors on one row (missing `patient_id`, invalid project name, in-flight job, or no matching data) don't abort the batch — response is `{"message": ..., "results": [{"row": <int>, "patient_id": ..., "moved_series": [...], "new_project": ...} or {"row": <int>, "patient_id": ..., "error": <string>}, ...]}`.
 
 ### `POST /api/database/upload_sanity_to_web`
 **Not implemented** — the handler body is a bare `...` placeholder. It reads a JSON body but performs no action and has no `return`, so calling it will error (Flask requires a response).

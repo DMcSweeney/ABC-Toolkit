@@ -11,6 +11,7 @@ import requests
 import pydicom
 import time
 
+from abcTK.constants import UNASSIGNED_PROJECT
 
 bp = Blueprint('/api/conquest', __name__)
 logger = logging.getLogger(__name__)
@@ -83,9 +84,9 @@ def handle_trigger():
     ## Then enqueue job
     if modality == 'CT':
 
-        spine_body = {"input_path": image_path, "project": 'inbox', "patient_id": patient_id, 'series_uuid': series_uid, "modality": modality}
+        spine_body = {"input_path": image_path, "project": UNASSIGNED_PROJECT, "patient_id": patient_id, 'series_uuid': series_uid, "modality": modality}
         spine = requests.post(spine_url, json=spine_body, verify=False)
-        segment_body = {"input_path": image_path, "project": 'inbox', "patient_id": patient_id, 'series_uuid': series_uid, 
+        segment_body = {"input_path": image_path, "project": UNASSIGNED_PROJECT, "patient_id": patient_id, 'series_uuid': series_uid,
         "modality": modality,  "num_slices": "1"}
         segment_body['depends_on'] = spine.json()['job-ID'] ## Update segment job with the job id 
         segment = requests.post(segment_url, json=segment_body, verify=False) ## Submit segment job
@@ -103,7 +104,7 @@ def handle_trigger():
         ## coordinate frame and no exportable registration object from MOSAIQ, so a
         ## registration job runs first to align them and correct the vertebra slice
         ## numbers before segmentation - see abcTK/inference/register.py.
-        register_body = {"input_path": image_path, "project": 'inbox', "patient_id": patient_id,
+        register_body = {"input_path": image_path, "project": UNASSIGNED_PROJECT, "patient_id": patient_id,
         'series_uuid': series_uid, "reference_scan": response['_id']}
         logger.info(f"Submitting: {register_body}")
         register = requests.post(register_url, json=register_body, verify=False) ## Submit registration job
@@ -114,7 +115,7 @@ def handle_trigger():
             if level not in levels:
                 logger.info(f"No {modality} model for {level} vertebra, not submitting job...")
                 continue
-            segment_body = {"input_path": image_path, "project": 'inbox', "patient_id": patient_id, "vertebra": level,
+            segment_body = {"input_path": image_path, "project": UNASSIGNED_PROJECT, "patient_id": patient_id, "vertebra": level,
             'series_uuid': series_uid, "modality": modality,  "num_slices": "1", "resample": "True", "reference_scan": response['_id'],
               'calibrate_cbct': 'True', 'calibration_structure': 'brainstem'}
             segment_body['depends_on'] = register.json()['job-ID'] ## Segment job waits for the registration to complete
