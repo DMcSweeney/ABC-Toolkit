@@ -5,7 +5,7 @@ import Card from '../ui/Card.vue';
 import Button from '../ui/Button.vue';
 import LoadingState from '../ui/LoadingState.vue';
 import EmptyState from '../ui/EmptyState.vue';
-import { FolderIcon, PlusIcon, CircleStackIcon, QueueListIcon } from '@heroicons/vue/24/outline';
+import { FolderIcon, PlusIcon, ArrowsRightLeftIcon, CircleStackIcon, QueueListIcon } from '@heroicons/vue/24/outline';
 
 
 export default {
@@ -16,6 +16,7 @@ export default {
             loading: true,
             FolderIcon,
             PlusIcon,
+            ArrowsRightLeftIcon,
             CircleStackIcon,
             QueueListIcon,
             // Same env-var swap HeaderTab.vue uses to derive the Mongo Express / RQ Dashboard URLs.
@@ -48,7 +49,7 @@ export default {
         // Get a list of projects
         this.fetchProjectList();
     },
-    components: {ProjectEntry, Card, Button, LoadingState, EmptyState, PlusIcon, CircleStackIcon, QueueListIcon},
+    components: {ProjectEntry, Card, Button, LoadingState, EmptyState, PlusIcon, ArrowsRightLeftIcon, CircleStackIcon, QueueListIcon},
 }
 
 </script>
@@ -98,6 +99,9 @@ export default {
                     <p class="text-ink-muted text-sm pb-3">You'll need a CSV with paths to your data. Data should be visible from the tool.</p>
                     <Button to="/submit_job" variant="primary" class="w-full">
                         <PlusIcon class="size-5" /> Create Job
+                    </Button>
+                    <Button to="/assign_project" variant="secondary" class="w-full mt-2">
+                        <ArrowsRightLeftIcon class="size-5" /> Assign to Project
                     </Button>
                 </Card>
 

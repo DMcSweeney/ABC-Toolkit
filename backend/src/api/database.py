@@ -5,14 +5,31 @@ Endpoints for interacting with database
 import dill
 import datetime
 import logging
+import os
+import re
 import pandas as pd
-from flask import Blueprint, request, make_response, jsonify
+from flask import Blueprint, request, make_response, jsonify, current_app
 import numpy as np
 from rq import Queue
+from rq.job import Job
+from rq.registry import StartedJobRegistry
 import shutil
+
+from abcTK.constants import UNASSIGNED_PROJECT
 
 bp = Blueprint('api/database', __name__)
 logger = logging.getLogger(__name__)
+
+# Project names flow into os.path.join()/shutil.move() destinations, and (via the CSV
+# assignment endpoint) can originate from untrusted file content rather than a value a
+# human typed into a validated form field - so validate server-side too.
+PROJECT_NAME_RE = re.compile(r'^[A-Za-z0-9_-]+$')
+
+# RQ queues jobs can be enqueued on (see api/jobs.py) - checked for in-flight work before
+# reassigning a patient, since a running spine/segment job recomputes output_dir from its
+# own captured request and would otherwise resurrect the old project's directory/project
+# field after a move (abcTK/inference/segment.py & spine.py::update_database).
+JOB_QUEUE_NAMES = ['high', 'default', 'low']
 
 
 @bp.route('/api/database/delete_entry', methods=["POST"])
@@ -320,6 +337,82 @@ def extract_stats_from_mask():
             , 200)
     return res
 
+def _reassign_documents(database, output_base_dir, filter_query, current_project, new_project):
+    """
+    Move every document matching filter_query (which must already scope to
+    current_project - e.g. {"project": current_project} for a whole-project move, or with
+    an added "_id"/"patient_id" key to scope to a subset) into new_project, across all 4
+    collections, then move the corresponding on-disk output directories/sanity-image paths
+    to match.
+    """
+    update = {"$set": {"project": new_project}}
+    database.images.update_many(filter_query, update)
+    database.segmentation.update_many(filter_query, update)
+    database.spine.update_many(filter_query, update)
+    database.quality_control.update_many(filter_query, update)
+
+    # Re-query under the new project to find exactly what was just moved.
+    moved_filter = {**filter_query, "project": new_project}
+
+    for seg_query in database.segmentation.find(moved_filter):
+        # Rebuilt from known fields rather than string-replacing current_project inside
+        # the old output_dir - that substring isn't anchored to a path boundary, so it
+        # can corrupt the path if a patient_id/series_uuid happens to contain it.
+        new_output_dir = os.path.join(output_base_dir, new_project, seg_query['patient_id'], seg_query['series_uuid'])
+        old_output_dir = seg_query.get('output_dir')
+        if old_output_dir and old_output_dir != new_output_dir and os.path.isdir(old_output_dir):
+            logger.info(f"Updating output_directory from {old_output_dir} to {new_output_dir}")
+            os.makedirs(os.path.dirname(new_output_dir), exist_ok=True)
+            shutil.move(old_output_dir, new_output_dir)
+
+        database.segmentation.update_one({"_id": seg_query['_id']}, {"$set": {"output_dir": new_output_dir}})
+        database.spine.update_one({"_id": seg_query['_id'], "project": new_project}, {"$set": {"output_dir": new_output_dir}})
+
+    # Update the paths to sanity images. This prefix is anchored to a full path segment
+    # (unlike the output_dir case above) so a plain replace is safe here.
+    old_prefix = os.path.join(output_base_dir, current_project)
+    new_prefix = os.path.join(output_base_dir, new_project)
+    for qc_query in database.quality_control.find(moved_filter):
+        new_paths = {}
+        for level, path_dict in qc_query['paths_to_sanity_images'].items():
+            if isinstance(path_dict, dict):
+                # If it's a dict, then in format: {Level: {Compartment: path}}
+                new_paths[level] = {compartment: path.replace(old_prefix, new_prefix) for compartment, path in path_dict.items()}
+            else:
+                # If it's a str, then format is: {Compartment: path}
+                new_paths[level] = path_dict.replace(old_prefix, new_prefix)
+
+        database.quality_control.update_one({"_id": qc_query['_id']}, {"$set": {"paths_to_sanity_images": new_paths}})
+
+
+def _patient_has_pending_jobs(patient_id):
+    """
+    True if patient_id appears in the args of any queued or currently-running RQ job.
+    Reassigning a patient while a spine/segment job for them is still in flight is unsafe:
+    abcTK/inference/{spine,segment}.py::update_database recomputes output_dir from the
+    job's own captured request (not the current Mongo state) and unconditionally
+    (re)creates it, so a job finishing after a move can silently resurrect the old
+    project's directory and revert the project field on some collections but not others.
+    """
+    from app import redis
+
+    for queue_name in JOB_QUEUE_NAMES:
+        queue = Queue(queue_name, connection=redis)
+        job_ids = set(queue.job_ids) | set(StartedJobRegistry(queue=queue).get_job_ids())
+        for job_id in job_ids:
+            try:
+                job = Job.fetch(job_id, connection=redis)
+            except Exception:
+                continue
+            if job.args and isinstance(job.args[0], dict) and job.args[0].get('patient_id') == patient_id:
+                return True
+    return False
+
+
+def _valid_project_name(name):
+    return bool(name) and bool(PROJECT_NAME_RE.match(name))
+
+
 @bp.route('/api/database/change_project', methods=['POST'])
 def change_project():
     ## Given an id in an existing project, reassign to a different project
@@ -328,106 +421,167 @@ def change_project():
     assert all([x in req for x in required_args]), f"Missing some required args. Provide all of: {required_args}"
 
     from app import mongo
-    # Update any db entries
-    database = mongo.db 
+    database = mongo.db
+    output_base_dir = current_app.config['OUTPUT_DIR']
 
     #If want to move all patients
     if req['_id'] == '*':
         logger.info(f"Moving all images in {req['current_project']} to {req['new_project']}")
-        database.images.update_many({"project": req["current_project"]},
-                                    {"$set": {"project": req["new_project"]}})    
-        
-        database.segmentation.update_many({"project": req["current_project"]},
-                                {"$set": {"project": req["new_project"]}})
-        
-        database.spine.update_many({"project": req["current_project"]},
-                                {"$set": {"project": req["new_project"]}})
-
-        database.quality_control.update_many({"project": req["current_project"]},
-                            {"$set": {"project": req["new_project"]}})
-        
-         # How to handle any outputs? Move to new directory? and makedirs
-        all_queries = database.segmentation.find({"project": req['new_project']})
-        if all_queries:
-            for seg_query in all_queries:
-                new_output_dir = seg_query['output_dir'].replace(req['current_project'], req['new_project'])
-                logger.info(f"Updating output_directory from {seg_query['output_dir']} to {new_output_dir}")
-
-                shutil.move(seg_query['output_dir'], new_output_dir)
-            
-                # Update the output path
-                database.segmentation.update_one({"_id": seg_query['_id'], "project": req["new_project"]},
-                                    {"$set": {"output_dir": new_output_dir}})
-                
-
-                database.spine.update_one({"_id": seg_query['_id'], "project": req["new_project"]},
-                                    {"$set": {"output_dir": new_output_dir}})
-
-        # Update the paths to sanity images
-        all_queries = database.quality_control.find({"project": req['new_project']})
-        if all_queries:
-            for qc_query in all_queries:
-                new_paths = {}
-                for level, path_dict in qc_query['paths_to_sanity_images'].items():
-                    if isinstance(path_dict, dict):
-                        # If it's a dict, then in format: {Level: {Compartment: path}}
-                        new_paths[level] = {compartment: path.replace(f"/data/outputs/{req['current_project']}", f"/data/outputs/{req['new_project']}") for compartment, path in path_dict.items()}
-                    else:
-                        # If it's a str, then format is: {Compartment: path}
-                        new_paths[level] = path_dict.replace(f"/data/outputs/{req['current_project']}", f"/data/outputs/{req['new_project']}")
-
-                database.quality_control.update_one({"_id": qc_query['_id'], "project": req["new_project"]},
-                                    {"$set": {"paths_to_sanity_images": new_paths}})
-
-
-
+        filter_query = {"project": req['current_project']}
     else:
-        database.images.update_one({"_id": req['_id'], "project": req["current_project"]},
-                                    {"$set": {"project": req["new_project"]}})    
-        
-        database.segmentation.update_one({"_id": req['_id'], "project": req["current_project"]},
-                                {"$set": {"project": req["new_project"]}})
-        
-        database.spine.update_one({"_id": req['_id'], "project": req["current_project"]},
-                                {"$set": {"project": req["new_project"]}})
+        filter_query = {"_id": req['_id'], "project": req['current_project']}
 
-        database.quality_control.update_one({"_id": req['_id'], "project": req["current_project"]},
-                            {"$set": {"project": req["new_project"]}})
-    
-        # How to handle any outputs? Move to new directory? and makedirs
-        seg_query = database.segmentation.find_one({"_id": req['_id'], "project": req['new_project']})
-        if seg_query:
-            new_output_dir = seg_query['output_dir'].replace(req['current_project'], req['new_project'])
-            shutil.move(seg_query['output_dir'], new_output_dir)
-        
-            # Update the output path
-            database.segmentation.update_one({"_id": req['_id'], "project": req["new_project"]},
-                                {"$set": {"output_dir": new_output_dir}})
-            
+    _reassign_documents(database, output_base_dir, filter_query, req['current_project'], req['new_project'])
 
-            database.spine.update_one({"_id": req['_id'], "project": req["new_project"]},
-                                {"$set": {"output_dir": new_output_dir}})
-
-        # Update the paths to sanity images
-        qc_query = database.quality_control.find_one({"_id": req['_id'], "project": req['new_project']})
-        if qc_query:
-            new_paths = {}
-            for level, path_dict in qc_query['paths_to_sanity_images'].items():
-                if isinstance(path_dict, dict):
-                    # If it's a dict, then in format: {Level: {Compartment: path}}
-                    new_paths[level] = {compartment: path.replace(f"/data/outputs/{req['current_project']}", f"/data/outputs/{req['new_project']}") for compartment, path in path_dict.items()}
-                else:
-                    # If it's a str, then format is: {Compartment: path}
-                    new_paths[level] = path_dict.replace(f"/data/outputs/{req['current_project']}", f"/data/outputs/{req['new_project']}")
-
-            database.quality_control.update_one({"_id": req['_id'], "project": req["new_project"]},
-                                {"$set": {"paths_to_sanity_images": new_paths}})
-    
     res = make_response(
         jsonify({
             "message": f"Moved {req['_id']} to {req['new_project']}.",
             "request": req}),
         200)
+    return res
+
+
+@bp.route('/api/database/find_patient', methods=['GET'])
+def find_patient():
+    """
+    Cross-project lookup by patient_id - deliberately not scoped to a single project,
+    since the point is finding data that may be sitting in the Unassigned project or
+    already split across others.
+    """
+    patient_id = request.args.get('patient_id')
+    if not patient_id:
+        raise ValueError("Missing required query param: 'patient_id'")
+
+    from app import mongo
+    database = mongo.db
+
+    docs = list(database.images.find(
+        {"patient_id": patient_id},
+        {"project": 1, "series_uuid": 1, "modality": 1, "acquisition_date": 1}
+    ))
+
+    projects = {}
+    for doc in docs:
+        projects.setdefault(doc['project'], []).append({
+            "_id": doc['_id'],
+            "series_uuid": doc.get('series_uuid'),
+            "modality": doc.get('modality'),
+            "acquisition_date": doc.get('acquisition_date'),
+        })
+
+    data = [{"project": project, "series": series} for project, series in projects.items()]
+
+    res = make_response(jsonify({
+        "message": f"Found {len(docs)} series for patient {patient_id} across {len(data)} project(s)",
+        "patient_id": patient_id,
+        "projects": data,
+    }), 200)
+    return res
+
+
+@bp.route('/api/database/reassign_patient', methods=['POST'])
+def reassign_patient():
+    """
+    Move every series belonging to a single patient (within one current project) to a
+    different project. Used by the "Assign to Project" UI - both the single-patient search
+    flow and (per-row) the CSV batch flow call this same logic.
+    """
+    req = request.get_json()
+    required_args = ['patient_id', 'current_project', 'new_project']
+    assert all([x in req for x in required_args]), f"Missing some required args. Provide all of: {required_args}"
+
+    if not _valid_project_name(req['new_project']) or not _valid_project_name(req['current_project']):
+        raise ValueError("Project names may only contain letters, numbers, underscores and hyphens.")
+
+    if _patient_has_pending_jobs(req['patient_id']):
+        res = make_response(jsonify({
+            "message": f"Patient {req['patient_id']} has jobs queued or in progress - try again once they finish.",
+            "skipped": True,
+        }), 409)
+        return res
+
+    from app import mongo
+    database = mongo.db
+    output_base_dir = current_app.config['OUTPUT_DIR']
+
+    filter_query = {"patient_id": req['patient_id'], "project": req['current_project']}
+    moved = database.images.distinct('series_uuid', filter_query)
+
+    _reassign_documents(database, output_base_dir, filter_query, req['current_project'], req['new_project'])
+
+    res = make_response(jsonify({
+        "message": f"Moved {len(moved)} series for patient {req['patient_id']} from {req['current_project']} to {req['new_project']}.",
+        "series_uuids": moved,
+    }), 200)
+    return res
+
+
+@bp.route('/api/database/assign_patients_from_csv', methods=['POST'])
+def assign_patients_from_csv():
+    """
+    Bulk-reassign patients to a project from an uploaded CSV (multipart/form-data).
+
+    Form fields:
+      - "current_project": default project rows are moved FROM, unless a row's own
+        "current_project" column overrides it. Defaults to the Unassigned project.
+      - "new_project": project rows are moved TO, unless a row's own "new_project" column
+        overrides it.
+      - "file": the CSV. One row per patient. Required column: "patient_id".
+    """
+    default_current_project = request.form.get('current_project') or UNASSIGNED_PROJECT
+    default_new_project = request.form.get('new_project')
+
+    if 'file' not in request.files:
+        raise ValueError("No CSV file was uploaded. Attach it under the 'file' form field.")
+
+    f = request.files['file']
+    try:
+        df = pd.read_csv(f.stream)
+    except Exception as e:
+        raise ValueError(f"Could not parse the uploaded file as CSV: {e}")
+
+    if 'patient_id' not in df.columns:
+        raise ValueError("CSV is missing the required 'patient_id' column.")
+
+    if not default_new_project and 'new_project' not in df.columns:
+        raise ValueError("Missing required form field: 'new_project' (or provide a 'new_project' column in the CSV).")
+
+    from app import mongo
+    database = mongo.db
+    output_base_dir = current_app.config['OUTPUT_DIR']
+
+    results = []
+    for i, row in df.iterrows():
+        row_args = {k: str(v) for k, v in row.to_dict().items() if pd.notna(v)}
+        patient_id = row_args.get('patient_id')
+        current_project = row_args.get('current_project', default_current_project)
+        new_project = row_args.get('new_project', default_new_project)
+
+        if not patient_id:
+            results.append({"row": int(i), "error": "Missing patient_id"})
+            continue
+
+        if not _valid_project_name(new_project) or not _valid_project_name(current_project):
+            results.append({"row": int(i), "patient_id": patient_id, "error": "Project names may only contain letters, numbers, underscores and hyphens."})
+            continue
+
+        if _patient_has_pending_jobs(patient_id):
+            results.append({"row": int(i), "patient_id": patient_id, "error": "Patient has jobs queued or in progress - skipped."})
+            continue
+
+        filter_query = {"patient_id": patient_id, "project": current_project}
+        moved = database.images.distinct('series_uuid', filter_query)
+        if not moved:
+            results.append({"row": int(i), "patient_id": patient_id, "error": f"No series found for patient in project '{current_project}'."})
+            continue
+
+        _reassign_documents(database, output_base_dir, filter_query, current_project, new_project)
+        results.append({"row": int(i), "patient_id": patient_id, "moved_series": moved, "new_project": new_project})
+
+    res = make_response(jsonify({
+        "message": f"Processed {len(results)} row(s)",
+        "results": results,
+    }), 200)
     return res
 
 

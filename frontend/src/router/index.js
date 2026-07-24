@@ -3,6 +3,7 @@ import SanityPage from '@/components/sanity/Sanity.vue'
 import HomePage from '@/components/homepage/HomePage.vue'
 import ProjectPage from '@/components/project/ProjectPage.vue'
 import JobForm from '@/components/homepage/JobForm.vue'
+import AssignToProject from '@/components/homepage/AssignToProject.vue'
 import SanityHomePage from '@/components/sanity/SanityHomePage.vue'
 import PatientPage from '@/components/project/PatientPage.vue'
 import ProtectedPage from '@/components/ProtectedPage.vue'
@@ -27,6 +28,15 @@ const router = createRouter({
       meta: {
         requiresAuth:true,
         breadcrumbs: () => [{ label: 'Submit jobs' }]
+      }
+    },
+    {
+      path:'/assign_project',
+      name: 'assign_project',
+      component: AssignToProject,
+      meta: {
+        requiresAuth:true,
+        breadcrumbs: () => [{ label: 'Assign to project' }]
       }
     },
     {
