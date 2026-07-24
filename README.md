@@ -43,7 +43,7 @@ Once the stack is up, the frontend is at `https://<HOST_IP>:<FRONTEND_PORT>` (de
 
 ## Using ABC
 <a name="using_abc"></a>
-Tasks are performed by making HTTP requests to pre-specified endpoints. All endpoints have an associated example in the `examples/api` folder, and a full argument-by-argument reference is available in [docs/api-reference.md](docs/api-reference.md).
+Tasks are performed by making HTTP requests to pre-specified endpoints. A full argument-by-argument reference is available in [docs/api-reference.md](docs/api-reference.md).
 
 You can do this whichever way suits you best: through the command-line with tools like `curl`, from python scripts with the [requests library](https://pypi.org/project/requests/), from javascript with [axios](https://axios-http.com/docs/intro) or use a desktop app like [Postman](https://www.postman.com/). Some example python scripts are available in [examples/python/](examples/python/).
 
