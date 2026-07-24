@@ -1,6 +1,8 @@
 <script>
 import api from '@/api/client';
+import { useToastStore } from '@/stores/toast';
 import ProjectEntry from './ProjectEntry.vue';
+import PatientIdAutocomplete from './PatientIdAutocomplete.vue';
 import Card from '../ui/Card.vue';
 import Button from '../ui/Button.vue';
 import LoadingState from '../ui/LoadingState.vue';
@@ -10,6 +12,9 @@ import { FolderIcon, PlusIcon, ArrowsRightLeftIcon, CircleStackIcon, QueueListIc
 
 export default {
     name: 'HomePage',
+    setup() {
+        return { toast: useToastStore() };
+    },
     data() {
         return {
             projectInfo: [],
@@ -22,6 +27,12 @@ export default {
             // Same env-var swap HeaderTab.vue uses to derive the Mongo Express / RQ Dashboard URLs.
             db_url: import.meta.env.VITE_BACKEND_URI.replace(import.meta.env.VITE_BACKEND_PORT, import.meta.env.VITE_MONGO_EXPRESS_PORT),
             jobs_url: `${import.meta.env.VITE_BACKEND_URI}/rq-dashboard`,
+            // Patient lookup - lets a user jump straight to a patient's page without going
+            // through the project list first. Patient ids aren't scoped to a project client-side,
+            // so a search can resolve to more than one project - see goToPatient().
+            patientSearchId: '',
+            patientSearchLoading: false,
+            patientSearchProjects: [], // populated only when a search matches >1 project
         }
     },
     computed: {
@@ -44,12 +55,39 @@ export default {
                     this.loading = false;
                 })
         },
+        async goToPatient(providedId) {
+            const patientId = (typeof providedId === 'string' && providedId ? providedId : this.patientSearchId || '').trim();
+            if (!patientId) {
+                this.toast.error('Enter a Patient ID.');
+                return;
+            }
+            this.patientSearchLoading = true;
+            this.patientSearchProjects = [];
+            try {
+                const res = await api.get('/api/database/find_patient', { params: { patient_id: patientId } });
+                const projects = res.data.projects || [];
+                if (!projects.length) {
+                    this.toast.error(`No data found for patient ${patientId}.`);
+                } else if (projects.length === 1) {
+                    this.navigateToPatient(projects[0].project, patientId);
+                } else {
+                    this.patientSearchProjects = projects;
+                }
+            } catch (err) {
+                // Error already surfaced via toast by the shared api client.
+            } finally {
+                this.patientSearchLoading = false;
+            }
+        },
+        navigateToPatient(project, patientId) {
+            this.$router.push({ name: 'patientPage', params: { project, patientID: patientId || this.patientSearchId } });
+        },
     },
     created() {
         // Get a list of projects
         this.fetchProjectList();
     },
-    components: {ProjectEntry, Card, Button, LoadingState, EmptyState, PlusIcon, ArrowsRightLeftIcon, CircleStackIcon, QueueListIcon},
+    components: {ProjectEntry, PatientIdAutocomplete, Card, Button, LoadingState, EmptyState, PlusIcon, ArrowsRightLeftIcon, CircleStackIcon, QueueListIcon},
 }
 
 </script>
@@ -62,6 +100,24 @@ export default {
             <p class="text-ink-primary text-4xl font-bold tracking-tight">ABC Toolkit</p>
             <p class="text-ink-muted text-sm mt-1">Automatic body composition analysis for CT / MR / CBCT scans</p>
         </div>
+
+        <Card padding="sm" class="mb-6">
+            <form @submit.prevent="goToPatient()" class="flex gap-4 items-end">
+                <PatientIdAutocomplete v-model="patientSearchId" label="Jump to a patient"
+                    placeholder="Search by Patient ID" class="flex-1"
+                    @select="goToPatient" @enter="goToPatient" />
+                <Button type="submit" variant="secondary" :loading="patientSearchLoading">Go</Button>
+            </form>
+            <div v-if="patientSearchProjects.length" class="flex flex-col gap-2 pt-3">
+                <p class="text-ink-secondary text-sm">Patient {{ patientSearchId }} was found in multiple projects — choose one:</p>
+                <div class="flex flex-wrap gap-2">
+                    <Button v-for="group in patientSearchProjects" :key="group.project" type="button" variant="secondary"
+                        @click="navigateToPatient(group.project, patientSearchId)">
+                        {{ group.project }} ({{ group.series.length }})
+                    </Button>
+                </div>
+            </div>
+        </Card>
 
         <div class="flex flex-col lg:flex-row gap-6 items-start">
             <!-- Main: project list -->

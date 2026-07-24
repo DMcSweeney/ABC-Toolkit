@@ -441,6 +441,48 @@ def change_project():
     return res
 
 
+@bp.route('/api/database/search_patients', methods=['GET'])
+def search_patients():
+    """
+    Type-ahead lookup: patient ids containing `q` anywhere (case-insensitive), across all
+    projects - not just a prefix match, since real patient ids often carry an
+    institution/trial prefix (e.g. "ARC2189247") that a user searching by the numeric part
+    alone ("2189247") shouldn't have to know about or type. Results are ranked so an exact
+    match, then a prefix match, sort ahead of ids that merely contain `q` elsewhere. Used by
+    the frontend's patient-id autocomplete - deliberately not scoped to a project, for the
+    same reason find_patient isn't.
+    """
+    query = request.args.get('q', '').strip()
+    try:
+        limit = int(request.args.get('limit', 20))
+    except ValueError:
+        raise ValueError("'limit' must be an integer.")
+
+    patient_ids = []
+    if query:
+        from app import mongo
+        database = mongo.db
+        matches = database.images.distinct('patient_id', {"patient_id": {"$regex": re.escape(query), "$options": "i"}})
+
+        query_lower = query.lower()
+
+        def rank(patient_id):
+            lower = patient_id.lower()
+            if lower == query_lower:
+                return (0, patient_id)
+            if lower.startswith(query_lower):
+                return (1, patient_id)
+            return (2, patient_id)
+
+        patient_ids = sorted(matches, key=rank)[:limit]
+
+    res = make_response(jsonify({
+        "message": f"Found {len(patient_ids)} matching patient id(s)",
+        "patient_ids": patient_ids,
+    }), 200)
+    return res
+
+
 @bp.route('/api/database/find_patient', methods=['GET'])
 def find_patient():
     """
