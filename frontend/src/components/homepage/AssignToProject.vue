@@ -4,10 +4,11 @@ import { useToastStore } from '@/stores/toast';
 import Card from '../ui/Card.vue';
 import Button from '../ui/Button.vue';
 import Input from '../ui/Input.vue';
+import PatientIdAutocomplete from './PatientIdAutocomplete.vue';
 
 export default {
     name: 'AssignToProject',
-    components: { Card, Button, Input },
+    components: { Card, Button, Input, PatientIdAutocomplete },
     setup() {
         return { toast: useToastStore() };
     },
@@ -164,7 +165,7 @@ export default {
     <!-- SINGLE PATIENT SEARCH -->
     <div v-if="mode === 'single'" class="flex flex-col gap-4">
         <form @submit.prevent="searchPatient" class="flex gap-4 items-end">
-            <Input v-model="patientId" label="Patient ID" placeholder="12345" class="flex-1" required />
+            <PatientIdAutocomplete v-model="patientId" class="flex-1" @select="searchPatient" @enter="searchPatient" />
             <Button type="submit" variant="secondary" :loading="searching">Search</Button>
         </form>
 

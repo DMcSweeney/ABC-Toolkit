@@ -236,6 +236,14 @@ Body: `{"_id": <string, required>, "current_project": <string, required>, "new_p
 ### `POST /api/database/change_patient_id`
 Body: `{"_id": <string, required>, "current_patient_id": <string, required>, "new_patient_id": <string, required>}`. Renames the patient id on all records for the given series `_id` and moves the output directory accordingly. **Note:** `current_patient_id` is required in the request but not actually checked against the existing value — only `_id` and `new_patient_id` matter, so a wrong `current_patient_id` won't be caught.
 
+### `GET /api/database/search_patients`
+| Arg | Required | Description |
+|---|---|---|
+| `q` | yes | Substring to search for anywhere in the patient id (case-insensitive) — not prefix-only, so a search for `2189247` will find `ARC2189247`. Empty/missing returns an empty list rather than erroring. |
+| `limit` | no | Max results, default `20`. |
+
+Type-ahead lookup backing the frontend's patient-id autocomplete (`PatientIdAutocomplete.vue`, used on the homepage and the "Assign to Project" page) — cross-project like `find_patient`, for the same reason. Results are ranked exact match, then prefix match, then any other substring match, before truncating to `limit`. Returns `{"message": ..., "patient_ids": [...]}`, a flat list of distinct matching ids (not per-project detail — use `find_patient` for that once a specific id is chosen).
+
 ### `GET /api/database/find_patient`
 | Arg | Required | Description |
 |---|---|---|
