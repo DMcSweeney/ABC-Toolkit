@@ -3,7 +3,7 @@ Contains schema for the different collections in the database.
 Easier to centralise all of this and push updates during processing
 """
 
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 
 @dataclass
 class Images():
@@ -45,8 +45,13 @@ class QualityControl():
 
     paths_to_sanity_images: dict
     quality_control: dict
-    qc_report: dict 
+    qc_report: dict
     overall_qc_state: dict
+    # Mirrors paths_to_sanity_images' shape ({compartment: {vertebra: path}}) but holds the
+    # pre-edit snapshot for any (compartment, vertebra) that's ever been manually corrected -
+    # populated once, on first edit, never overwritten again. Lets the QA pages flick back to
+    # the original AI sanity image. Must stay last: the only field with a default.
+    original_paths_to_sanity_images: dict = field(default_factory=dict)
 
 @dataclass
 class Spine():

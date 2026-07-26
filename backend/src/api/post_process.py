@@ -98,6 +98,8 @@ def get_stats():
     response = database.segmentation.find_one({"_id": _id, "project": project})
     data = {}
     for type_, dict_ in response["statistics"].items():
+        if type_ == '_original':
+            continue
         if req['format'] == 'metric':
             logger.info("Converting areas to mm2")
 
@@ -135,45 +137,42 @@ def getStatsForProjectv2():
         
         verts = list(qc['quality_control'].keys())
 
-        ## Catch manual edits
-        if any(['edited' in x for x in doc['statistics'].keys()]):
-            for vertebra_edited, data in doc["statistics"].items(): # Key should be format: VERTEBRA-edited or just VERTEBRA
-                if 'edited' in vertebra_edited:
-                    vertebra = vertebra_edited.rstrip('-edited')
-                else:
-                    vertebra = vertebra_edited
-                
-                for compartment, dict_ in data.items():
-                    
-                    for slice_, value in dict_.items():
-                        slice_num = int(slice_.lstrip('Slice'))
-
-                        row = {"patient_id": doc["patient_id"], "series_uuid": doc["series_uuid"], "acquisition_date": doc["all_parameters"][vertebra_edited]["acquisition_date"] if "acquisition_date" in doc["all_parameters"][vertebra_edited] else "nan",
-                            "vertebra": vertebra, "compartment": compartment, "area": value['area (voxels)'], "density": value['density (HU)'], "is_edit": True if 'edited' in vertebra_edited else False,
-                            "slice_number": slice_num, "X_spacing": float(spacing['X_spacing']), "Y_spacing": float(spacing['Y_spacing']), "slice_thickness": float(spacing['slice_thickness']),
-                                "spine_qc": float(qc["quality_control"][vertebra]["SPINE"]) if "SPINE" in qc['quality_control'][vertebra] else float("nan"), f"{vertebra}_qc": float(qc["quality_control"][vertebra][compartment]) if vertebra in qc["quality_control"] else float("nan")
-                                }
-                        tmp = pl.DataFrame(row)
-                        df = pl.concat([df, tmp], how="diagonal")
-
-
-        for vertebra, data in doc["statistics"].items():
+        for vertebra, vert_stats in doc["statistics"].items():
             if vertebra not in verts: ## This is to catch entries that were initially the old format {compartment: area/density} and were appended with the new format {level: {compartment: area/density}}
                 print(f'Skipping {vertebra}', flush=True)
                 continue
-            for compartment, dict_ in data.items():\
-                
+            acquisition_date = doc["all_parameters"].get(vertebra, {}).get("acquisition_date", "nan")
+            original = vert_stats.get('_original', {})
+
+            def emit_rows(compartment, dict_, is_edit):
+                nonlocal df
+                # quality_control[vertebra] is a per-compartment dict when written by the
+                # full-inference path (abcTK/inference/segment.py) but a flat pass/fail int
+                # when written by the edit-recompute path (extract_stats.py) - handle both,
+                # this is a pre-existing inconsistency between the two writers, not new here.
+                vertebra_qc = qc["quality_control"].get(vertebra)
+                if isinstance(vertebra_qc, dict):
+                    spine_qc = float(vertebra_qc["SPINE"]) if "SPINE" in vertebra_qc else float("nan")
+                    comp_qc = float(vertebra_qc[compartment]) if compartment in vertebra_qc else float("nan")
+                else:
+                    spine_qc = float(qc["quality_control"]["SPINE"]) if "SPINE" in qc["quality_control"] else float("nan")
+                    comp_qc = float(vertebra_qc) if vertebra_qc is not None else float("nan")
                 for slice_, value in dict_.items():
                     slice_num = int(slice_.lstrip('Slice'))
-
-                    row = {"patient_id": doc["patient_id"], "series_uuid": doc["series_uuid"], "acquisition_date": doc["all_parameters"][vertebra]["acquisition_date"],
-                        "vertebra": vertebra, "compartment": compartment, "area": value['area (voxels)'], "density": value['density (HU)'], "is_edit": False,
+                    row = {"patient_id": doc["patient_id"], "series_uuid": doc["series_uuid"], "acquisition_date": acquisition_date,
+                        "vertebra": vertebra, "compartment": compartment, "area": value['area (voxels)'], "density": value['density (HU)'], "is_edit": is_edit,
                         "slice_number": slice_num, "X_spacing": float(spacing['X_spacing']), "Y_spacing": float(spacing['Y_spacing']), "slice_thickness": float(spacing['slice_thickness']),
-                            "spine_qc": float(qc["quality_control"][vertebra]["SPINE"]) if "SPINE" in qc['quality_control'][vertebra] else float("nan"),
-                            f"{vertebra}_qc": float(qc["quality_control"][vertebra][compartment]) if vertebra in qc["quality_control"] else float("nan")
+                            "spine_qc": spine_qc, f"{vertebra}_qc": comp_qc
                             }
                     tmp = pl.DataFrame(row)
                     df = pl.concat([df, tmp], how="diagonal")
+
+            for compartment, dict_ in vert_stats.items():
+                if compartment == '_original':
+                    continue
+                if compartment in original:
+                    emit_rows(compartment, original[compartment], is_edit=False)
+                emit_rows(compartment, dict_, is_edit=compartment in original)
 
     if df.is_empty():
         res = make_response(jsonify({
@@ -212,51 +211,44 @@ def get_stats_for_project():
             logger.warn(f"{doc['_id']} did not pass quality control, skipping")
             continue
         verts = {f"{k}": v for k, v in qc['quality_control'].items() if k != "SPINE"}
-        
-        #TODO THIS CAN BE WRITTEN IN A MUCH BETTER WAY....
-        ## Check if entry has been edited
-        if any(['edited' in x for x in doc['statistics'].keys()]):
-            for vertebra_edited, data in doc["statistics"].items(): # Key should be format: VERTEBRA-edited or just VERTEBRA
-                if 'edited' in vertebra_edited:
-                    vertebra = vertebra_edited.rstrip('-edited')
-                else:
-                    vertebra = vertebra_edited
-                
-                if vertebra not in verts: ## This is to catch entries that were initially the old format {compartment: area/density} and were appended with the new format {level: {compartment: area/density}}
-                    print(f'Skipping {vertebra}', flush=True)
-                    continue
-                for type_, dict_ in data.items():
-                    
-                    for slice_, value in dict_.items():
-                        slice_num = int(slice_.lstrip('Slice'))
-
-                        row = {"patient_id": doc["patient_id"], "series_uuid": doc["series_uuid"], "acquisition_date": doc["all_parameters"][vertebra_edited]["acquisition_date"] if "acquisition_date" in doc["all_parameters"][vertebra_edited] else "nan",
-                            "vertebra": vertebra, "compartment": type_, "area": value['area (voxels)'], "density": value['density (HU)'], "is_edit": True if 'edited' in vertebra_edited else False,
-                            "slice_number": slice_num, "X_spacing": float(spacing['X_spacing']), "Y_spacing": float(spacing['Y_spacing']), "slice_thickness": float(spacing['slice_thickness']),
-                                "spine_qc": float(qc["quality_control"]["SPINE"]) if "SPINE" in qc['quality_control'] else float("nan"), f"{vertebra}_qc": float(qc["quality_control"][vertebra]) if vertebra in qc["quality_control"] else float("nan")
-                                }
-                        tmp = pl.DataFrame(row)
-                        df = pl.concat([df, tmp], how="diagonal")
-
 
         if any([x in verts for x in doc["statistics"].keys()]): # This is the new way of writing to the database (i.e. splitting everything on vertebral level)
-            
-            for vertebra, data in doc["statistics"].items():
+
+            for vertebra, vert_stats in doc["statistics"].items():
                 if vertebra not in verts: ## This is to catch entries that were initially the old format {compartment: area/density} and were appended with the new format {level: {compartment: area/density}}
                     print(f'Skipping {vertebra}', flush=True)
                     continue
-                for type_, dict_ in data.items():\
-                    
+                acquisition_date = doc["all_parameters"].get(vertebra, {}).get("acquisition_date", "nan")
+                original = vert_stats.get('_original', {})
+
+                def emit_rows(type_, dict_, is_edit):
+                    nonlocal df
+                    # quality_control[vertebra] is a per-compartment dict when written by the
+                    # full-inference path but a flat pass/fail int when written by the
+                    # edit-recompute path - handle both (pre-existing inconsistency, not new here).
+                    vertebra_qc = qc["quality_control"].get(vertebra)
+                    if isinstance(vertebra_qc, dict):
+                        spine_qc = float(vertebra_qc["SPINE"]) if "SPINE" in vertebra_qc else float("nan")
+                        comp_qc = float(vertebra_qc[type_]) if type_ in vertebra_qc else float("nan")
+                    else:
+                        spine_qc = float(qc["quality_control"]["SPINE"]) if "SPINE" in qc['quality_control'] else float("nan")
+                        comp_qc = float(vertebra_qc) if vertebra_qc is not None else float("nan")
                     for slice_, value in dict_.items():
                         slice_num = int(slice_.lstrip('Slice'))
-
-                        row = {"patient_id": doc["patient_id"], "series_uuid": doc["series_uuid"], "acquisition_date": doc["all_parameters"][vertebra]["acquisition_date"],
-                            "vertebra": vertebra, "compartment": type_, "area": value['area (voxels)'], "density": value['density (HU)'], "is_edit": False,
+                        row = {"patient_id": doc["patient_id"], "series_uuid": doc["series_uuid"], "acquisition_date": acquisition_date,
+                            "vertebra": vertebra, "compartment": type_, "area": value['area (voxels)'], "density": value['density (HU)'], "is_edit": is_edit,
                             "slice_number": slice_num, "X_spacing": float(spacing['X_spacing']), "Y_spacing": float(spacing['Y_spacing']), "slice_thickness": float(spacing['slice_thickness']),
-                                "spine_qc": float(qc["quality_control"]["SPINE"]) if "SPINE" in qc['quality_control'] else float("nan"), f"{vertebra}_qc": float(qc["quality_control"][vertebra]) if vertebra in qc["quality_control"] else float("nan")
+                                "spine_qc": spine_qc, f"{vertebra}_qc": comp_qc
                                 }
                         tmp = pl.DataFrame(row)
                         df = pl.concat([df, tmp], how="diagonal")
+
+                for type_, dict_ in vert_stats.items():
+                    if type_ == '_original':
+                        continue
+                    if type_ in original:
+                        emit_rows(type_, original[type_], is_edit=False)
+                    emit_rows(type_, dict_, is_edit=type_ in original)
         else: # This is the old way but keeping here to catch exceptions
             for type_, dict_ in doc["statistics"].items():
                 if type_ not in ['IMAT', 'skeletal_muscle', 'visceral_fat', 'subcutaneous_fat']:

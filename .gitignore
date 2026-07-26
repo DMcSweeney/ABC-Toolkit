@@ -17,3 +17,5 @@ package-lock.json
 priv.key
 
 .vscode
+
+build_and_push_images.sh

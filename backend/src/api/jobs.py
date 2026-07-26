@@ -101,12 +101,21 @@ def queue_infer_segment():
 @bp.route('/api/jobs/query_job', methods=["GET"])
 def query_job():
     from app import redis
-    #TODO Return job status + outputs given a job id
     job_id = request.args.get("id")
 
     job = Job.fetch(id=job_id, connection=redis)
     result = job.latest_result()
-    
+
+    if result is None:
+        # No result yet - the job is still queued or running (latest_result() only
+        # returns something once the job has finished, one way or another).
+        res = make_response(jsonify({
+            'job-ID': job_id,
+            'status': f'Type.{job.get_status(refresh=True).upper()}',
+            "result": None
+        }), 200)
+        return res
+
     res = make_response(jsonify({
         'job-ID': job_id,
         'status': str(result.type),

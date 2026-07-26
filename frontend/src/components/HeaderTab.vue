@@ -9,6 +9,9 @@ const themeStore = useThemeStore()
 
 const db_url = import.meta.env.VITE_BACKEND_URI.replace(import.meta.env.VITE_BACKEND_PORT, import.meta.env.VITE_MONGO_EXPRESS_PORT)
 const jobs_url = `${import.meta.env.VITE_BACKEND_URI}/rq-dashboard`
+// Orthanc's built-in web server (unlike mongo-express) isn't configured for HTTPS, so this
+// link uses http:// rather than the https:// scheme the other Quick Links use.
+const orthanc_url = import.meta.env.VITE_BACKEND_URI.replace('https://', 'http://').replace(import.meta.env.VITE_BACKEND_PORT, import.meta.env.VITE_ORTHANC_HTTP_PORT)
 
 const activeProject = computed(() => route.params.project)
 </script>
@@ -25,6 +28,7 @@ const activeProject = computed(() => route.params.project)
         <div class="flex items-center align-end m-auto mr-5">
             <a class="text-ink-secondary px-2 font-bold hover:text-brand-400 transition-colors duration-150" :href="`${db_url}`" target="_blank" rel="noopener noreferrer" aria-label="Open database viewer (opens in a new tab)">Database</a>
             <a class="text-ink-secondary px-2 font-bold hover:text-brand-400 transition-colors duration-150" :href="`${jobs_url}`" target="_blank" rel="noopener noreferrer" aria-label="Open job queue dashboard (opens in a new tab)">Jobs</a>
+            <a class="text-ink-secondary px-2 font-bold hover:text-brand-400 transition-colors duration-150" :href="`${orthanc_url}`" target="_blank" rel="noopener noreferrer" aria-label="Open Orthanc DICOM server (opens in a new tab)">Orthanc</a>
             <button type="button"
                 class="ml-2 p-1.5 rounded text-ink-secondary hover:text-brand-400 hover:bg-surface-raised transition-colors duration-150 focus:outline-none focus:ring-2 focus:ring-brand-500"
                 :aria-label="themeStore.theme === 'dark' ? 'Switch to light mode' : 'Switch to dark mode'"

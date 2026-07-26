@@ -40,6 +40,8 @@ class segmentationEngine():
         
         self.worldmatch_correction = worldmatch_correction  ## If data has gone through worldmatch need to shift intensities by -1024
 
+        self.slice_range = None  # (min, max) inclusive slice indices; set only by forward_extract_stats
+
         self.thresholds = {
             'skeletal_muscle': muscle_threshold,
             'subcutaneous_fat': fat_threshold,
@@ -104,8 +106,9 @@ class segmentationEngine():
         start = time.time()
         ## Extracts IMAT
         if 'skeletal_muscle' in self.holders:
+            self.save_total_muscle_mask(mask_dir, Image, origImage)
             self.extract_imat(image)
-        
+
         #TODO IF a mask exists, read it, overwrite and save!! That way all levels will be annotated in the same file.
         output = self.post_process(mask_dir, Image, origImage, compartment=None, **kwargs) # Returns stats for every compartment at every slice
         post_processing_time = time.time() - start
@@ -128,6 +131,11 @@ class segmentationEngine():
         Mask = mask_loader(mask_path)
         resampler = sitk.ResampleImageFilter()
         resampler.SetReferenceImage(Image)
+        # Masks are label data, not continuous intensity - linear interpolation (the default)
+        # introduces fractional values at boundaries, which then render as a color gradient in
+        # the sanity PNGs and can be rounded away inconsistently by consumers expecting a
+        # strictly binary mask (e.g. NiiVue's drawing loader).
+        resampler.SetInterpolator(sitk.sitkNearestNeighbor)
         Mask = resampler.Execute(Mask)
         mask = sitk.GetArrayFromImage(Mask)
         
@@ -139,18 +147,49 @@ class segmentationEngine():
             struct = np.ones((struct_size, struct_size), bool)[None] ## Shape: 1 x struct size x struct size
             mask = binary_dilation(mask, structure=struct).astype(mask.dtype)
 
-        self.slice_number, self.num_slices = self.get_slices_of_interest_from_mask(mask)
-        logger.info(f"Slice number: {self.slice_number}. Num slices: {self.num_slices}")
+        self.slice_number, self.num_slices, self.slice_range = self.get_slices_of_interest_from_mask(mask)
+        logger.info(f"Slice range: {self.slice_range}. (legacy center/num_slices: {self.slice_number}/{self.num_slices})")
         self.holders = {}
         if compartment == 'total_muscle':
             self.holders['skeletal_muscle'] = mask
+            self.save_total_muscle_mask(mask_dir, Image, origImage)
             self.extract_imat(image)
             # Rename to deal with post-processing
-            compartment = 'skeletal_muscle' 
+            compartment = 'skeletal_muscle'
+        else:
+            self.holders[compartment] = mask
+
+        self._reconcile_sibling_compartments(mask_dir, compartment, mask, Image, origImage)
 
         output = self.post_process(mask_dir, Image, origImage, compartment, **kwargs)
-       
+
         return output
+
+    def _reconcile_sibling_compartments(self, mask_dir, compartment, edited_mask, refImage, origImage):
+        # self.segments come from a single argmax over the model's output channels, so they're
+        # mutually exclusive by construction (see forward()/post_process). A freehand edit to one
+        # compartment only touches that compartment's own saved mask, so it can silently overlap a
+        # sibling's stale, unedited mask wherever the user corrected a pixel the model had
+        # originally assigned to that sibling - this is what previously showed up as a blended/
+        # nonsensical color in the combined 'ALL' sanity overlay. Subtract the edit from every
+        # sibling on disk to restore mutual exclusivity, mirroring the IMAT-from-muscle
+        # subtraction already done in post_process().
+        output_mask_dir = os.path.join(mask_dir, self.v_level)
+        siblings = [s for s in self.segments if s not in ('background', compartment)]
+        for sibling in siblings:
+            sibling_path = os.path.join(output_mask_dir, f'{sibling}.nii.gz')
+            if not os.path.isfile(sibling_path):
+                continue
+            resampler = sitk.ResampleImageFilter()
+            resampler.SetReferenceImage(refImage)
+            resampler.SetInterpolator(sitk.sitkNearestNeighbor)
+            SiblingMask = resampler.Execute(sitk.ReadImage(sibling_path))
+            sibling_arr = sitk.GetArrayFromImage(SiblingMask)
+            reconciled = np.where(edited_mask == 1, 0, sibling_arr).astype(sibling_arr.dtype)
+            if np.array_equal(reconciled, sibling_arr):
+                continue
+            SiblingImage = self.npy2itk(reconciled, refImage)
+            self.save_prediction(output_mask_dir, sibling, SiblingImage, origImage)
 
     ###############################################
     #* ================ HELPERS ==================
@@ -503,13 +542,50 @@ class segmentationEngine():
                 json = {self.v_level: [0, 0, self.slice_number]}
                 paths_to_sanity['SPINE'] = writer.write_spine_sanity('SPINE', originalImage, json, self.loader_function)
 
-        paths_to_sanity['ALL'] = writer.write_all_segmentation_sanity('ALL', self.image, self.holders, data)
+        # Purely for the combined 'ALL' overlay so it always shows every segmented tissue,
+        # not just whatever compartment(s) forward_extract_stats() just recomputed (e.g. a
+        # single-compartment edit only ever has that one compartment - and IMAT if muscle -
+        # in self.holders) - never merged into self.holders/data themselves, which must stay
+        # scoped to what was actually recomputed this call, using this call's own slice range.
+        expected = [x for x in self.segments if x != 'background']
+        if 'skeletal_muscle' in expected:
+            expected.append('IMAT')
+
+        sanity_holders = dict(self.holders)
+        for other in expected:
+            if other in sanity_holders:
+                continue
+            saved_path = os.path.join(output_mask_dir, f'{other}.nii.gz')
+            if not os.path.isfile(saved_path):
+                continue
+            # Same load+resample+array pattern forward_extract_stats() uses for the edited
+            # mask itself, so this lands in the same coordinate frame as self.holders.
+            # Nearest-neighbor since this is label data (see save_prediction).
+            resampler = sitk.ResampleImageFilter()
+            resampler.SetReferenceImage(refImage)
+            resampler.SetInterpolator(sitk.sitkNearestNeighbor)
+            OtherMask = resampler.Execute(sitk.ReadImage(saved_path))
+            sanity_holders[other] = sitk.GetArrayFromImage(OtherMask).astype(np.int8)
+
+        paths_to_sanity['ALL'] = writer.write_all_segmentation_sanity('ALL', self.image, sanity_holders)
         return data, paths_to_sanity
 
     def extract_stats(self, mask, thresholds):
         #* Extract region of interest
-        prediction = mask[self.slice_number-self.num_slices:self.slice_number+self.num_slices+1]
-        image = self.image[self.slice_number-self.num_slices:self.slice_number+self.num_slices+1]
+        if self.slice_range is not None:
+            # Set by forward_extract_stats: the exact inclusive [min, max] non-empty
+            # range found in the (possibly manually-edited) mask, which need not be
+            # odd-length or symmetric around a center.
+            lo, hi_inclusive = self.slice_range
+        else:
+            # forward() path (full inference): self.slice_number/self.num_slices mean
+            # "center slice" / "slices either side" - preserve exactly as before.
+            lo = self.slice_number - self.num_slices
+            hi_inclusive = self.slice_number + self.num_slices
+        hi = hi_inclusive + 1  # exclusive upper bound for slicing
+
+        prediction = mask[lo:hi]
+        image = self.image[lo:hi]
         logger.info(f"Extracting stats from sub-volume with shape: {image.shape}")
         logger.info(f"Applying thresholds: {thresholds}")
         #* Apply thresholding
@@ -518,16 +594,18 @@ class segmentationEngine():
 
         #* Calculate stats across subset
         stats = {}
-        slice_numbers = [x for x in np.arange(self.slice_number-self.num_slices, self.slice_number+self.num_slices+1) ]
+        slice_numbers = [x for x in np.arange(lo, hi)]
 
         for idx, slice_num in zip(range(image.shape[0]), slice_numbers) :
             im, pred = image[idx], prediction[idx]
-            #* Area calculation          
+            #* Area calculation
             area = float(np.sum(pred))
-            #* Density calculation
-            density = float(np.mean(im[pred==1]))
+            #* Density calculation. A slice can legitimately have zero masked pixels
+            #* once gaps/uneven edits are allowed (see get_slices_of_interest_from_mask),
+            #* so guard against np.mean's RuntimeWarning on an empty selection.
+            density = float(np.mean(im[pred==1])) if area > 0 else float('nan')
             stats[f'Slice {slice_num}'] = {'area (voxels)': area, 'density (HU)': density}
-        
+
         return stats
 
     def extract_imat(self, numpyImage):
@@ -546,13 +624,26 @@ class segmentationEngine():
     def save_prediction(self, output_dir, tag, Prediction, origImage):
         #* Save mask to outputs folder
         output_filename = os.path.join(output_dir, tag + '.nii.gz')
-        
-        # Resample Prediction to origImage
-        Prediction = sitk.Resample(Prediction, origImage, sitk.Transform(), sitk.sitkLinear, 0, origImage.GetPixelID())
+
+        # Resample Prediction to origImage. Nearest-neighbor since this is label data - linear
+        # would bake fractional boundary values into the saved file, which then shows up as a
+        # color gradient in the sanity PNGs and can be read inconsistently by other consumers
+        # (e.g. NiiVue's drawing loader) expecting a strictly binary mask.
+        Prediction = sitk.Resample(Prediction, origImage, sitk.Transform(), sitk.sitkNearestNeighbor, 0, origImage.GetPixelID())
         logger.info(f"Saving prediction with shape {Prediction.GetSize()} to: {output_filename}")
 
         sitk.WriteImage(Prediction, output_filename)
-    
+
+    def save_total_muscle_mask(self, mask_dir, refImage, origImage):
+        # Must run BEFORE extract_imat()/post_process() carve IMAT out of
+        # self.holders['skeletal_muscle'] - this is the network's true, un-holed muscle
+        # prediction, persisted so the in-browser contour editor can show/edit the full
+        # muscle region directly instead of the IMAT-excluded skeletal_muscle.nii.gz.
+        output_mask_dir = os.path.join(mask_dir, self.v_level)
+        os.makedirs(output_mask_dir, exist_ok=True)
+        TotalMuscle = self.npy2itk(self.holders['skeletal_muscle'], refImage)
+        self.save_prediction(output_mask_dir, 'total_muscle', TotalMuscle, origImage)
+
     def threshold_mask(self, image, thresholds):
         if thresholds[0] is None:
             logger.info("No lower threshold")
@@ -651,21 +742,25 @@ class segmentationEngine():
         
     @staticmethod
     def get_slices_of_interest_from_mask(mask):
-        #* Given a mask, extracts the median slice number and the number of slices either side
-        # Mask shape should be H x W x D 
+        #* Given a mask, extracts the inclusive [min, max] slice range containing signal,
+        #* plus a legacy (median "center", num_slices either side) pair kept only for
+        #* logging/sanity-PNG captions - the (min, max) range is what stats are computed
+        #* over, and it doesn't require the non-empty slices to be an odd/symmetric count
+        #* around a center (a manual edit will often produce an arbitrary contiguous, or
+        #* even non-contiguous, range).
+        # Mask shape should be H x W x D
         roi = list(np.sum(mask, axis=(1, 2)))
-        
+
         idc = [i for i in range(len(roi)) if roi[i]>0]
         logger.info(f"Found {len(idc)} slices with a mask.")
-        if len(idc) == 2:
-            logger.warn(f"Only detected two slices with mask! Using the first index (Slice {idc[0]}) as central slice and assuming num_slices == 1")
-            return int(idc[0]), 1
-        elif len(idc) == 0:
+        if len(idc) == 0:
             raise ValueError("No mask found!")
 
-        assert len(idc) % 2 != 0, "Number of slices is even, can't handle that atm.."
+        slice_min, slice_max = int(min(idc)), int(max(idc))
+        slice_number = (slice_min + slice_max) // 2
+        num_slices = (slice_max - slice_min) // 2
 
-        return int(np.median(idc)), (len(idc)-1)//2
+        return slice_number, num_slices, (slice_min, slice_max)
 
     @staticmethod
     def resample_image(Image, output_spacing):

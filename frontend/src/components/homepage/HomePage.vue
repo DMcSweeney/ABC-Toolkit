@@ -7,7 +7,7 @@ import Card from '../ui/Card.vue';
 import Button from '../ui/Button.vue';
 import LoadingState from '../ui/LoadingState.vue';
 import EmptyState from '../ui/EmptyState.vue';
-import { FolderIcon, PlusIcon, ArrowsRightLeftIcon, CircleStackIcon, QueueListIcon } from '@heroicons/vue/24/outline';
+import { FolderIcon, PlusIcon, ArrowsRightLeftIcon, CircleStackIcon, QueueListIcon, ServerIcon } from '@heroicons/vue/24/outline';
 
 
 export default {
@@ -24,9 +24,13 @@ export default {
             ArrowsRightLeftIcon,
             CircleStackIcon,
             QueueListIcon,
-            // Same env-var swap HeaderTab.vue uses to derive the Mongo Express / RQ Dashboard URLs.
+            ServerIcon,
+            // Same env-var swap HeaderTab.vue uses to derive the Mongo Express / RQ Dashboard / Orthanc URLs.
             db_url: import.meta.env.VITE_BACKEND_URI.replace(import.meta.env.VITE_BACKEND_PORT, import.meta.env.VITE_MONGO_EXPRESS_PORT),
             jobs_url: `${import.meta.env.VITE_BACKEND_URI}/rq-dashboard`,
+            // Orthanc's built-in web server isn't configured for HTTPS, so this uses http://
+            // rather than the https:// scheme db_url/jobs_url use.
+            orthanc_url: import.meta.env.VITE_BACKEND_URI.replace('https://', 'http://').replace(import.meta.env.VITE_BACKEND_PORT, import.meta.env.VITE_ORTHANC_HTTP_PORT),
             // Patient lookup - lets a user jump straight to a patient's page without going
             // through the project list first. Patient ids aren't scoped to a project client-side,
             // so a search can resolve to more than one project - see goToPatient().
@@ -168,6 +172,9 @@ export default {
                     </a>
                     <a :href="jobs_url" target="_blank" rel="noopener noreferrer" class="flex items-center gap-2 py-2 text-ink-secondary hover:text-brand-400 transition-colors duration-150" aria-label="Open job queue dashboard (opens in a new tab)">
                         <QueueListIcon class="size-5" /> Job Queue
+                    </a>
+                    <a :href="orthanc_url" target="_blank" rel="noopener noreferrer" class="flex items-center gap-2 py-2 text-ink-secondary hover:text-brand-400 transition-colors duration-150" aria-label="Open Orthanc DICOM server (opens in a new tab)">
+                        <ServerIcon class="size-5" /> Orthanc
                     </a>
                 </Card>
 

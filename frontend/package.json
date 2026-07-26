@@ -35,7 +35,8 @@
     "flowbite-vue": "^0.1.4",
     "@heroicons/vue": "^2.1.3",
     "axios": "^1.6.7",
-    "pinia": "^2.1.7"
+    "pinia": "^2.1.7",
+    "@niivue/niivue": "^0.69.0"
   },
   "devDependencies": {
     "@playwright/test": "^1.41.1",
@@ -60,6 +61,7 @@
     "flowbite-vue": "^0.1.4",
     "@heroicons/vue": "^2.1.3",
     "axios": "^1.6.7",
-    "pinia": "^2.1.7"
+    "pinia": "^2.1.7",
+    "@niivue/niivue": "^0.69.0"
   }
 }

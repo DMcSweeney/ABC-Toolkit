@@ -99,6 +99,19 @@ const router = createRouter({
       }
     },
     {
+      path: '/:project/contour_editor/:vertebra/:patient_id?',
+      name: 'contourEditor',
+      component: () => import('@/components/editor/ContourEditor.vue'),
+      meta: {
+        requiresAuth:true,
+        breadcrumbs: (route) => [
+          { label: route.params.project, to: `/${route.params.project}` },
+          ...(route.params.patient_id ? [{ label: `Patient ${route.params.patient_id}`, to: `/${route.params.project}/weights/${route.params.patient_id}` }] : []),
+          { label: `Edit ${route.params.vertebra} contour` }
+        ]
+      }
+    },
+    {
       path: '/protected',
       name: 'protected',
       component: ProtectedPage,
