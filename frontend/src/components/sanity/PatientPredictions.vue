@@ -7,6 +7,7 @@ import Modal from '../ui/Modal.vue';
 import Spinner from '../ui/Spinner.vue';
 import Badge from '../ui/Badge.vue';
 import Popover from '../ui/Popover.vue';
+import Select from '../ui/Select.vue';
 import failureForm from './FailureForm_v2.vue';
 import Multiselect from 'vue-multiselect';
 import { useToastStore } from '@/stores/toast';
@@ -51,6 +52,9 @@ export default {
             showFilterMenu: false, // Whether the "Filter patients by" dropdown is open
             debugInfoCache: {}, // Raw images-doc info for the "more info" popover, keyed by series uuid
             debugInfoLoading: false,
+            viewingOriginal: false, // Whether the main QA image currently shown is the pre-edit AI original
+            hasOriginalImage: false, // Whether this vertebra has ever been edited (so a toggle makes sense)
+            availableVertebrae: [], // Every vertebral level this patient has segmentation data for, across the whole project
         }
     },
     computed: {
@@ -120,18 +124,23 @@ export default {
             // Wait for patient list to run, then request the relevant image, given the _id
 
             this.current_uuid = _id;
+            this.viewingOriginal = false; // A newly-navigated-to scan always starts on the current view.
             this.GetSpine(_id)
             this.GetRegistration(_id)
             this.getQCReport(_id)
             this.getImagePassRate();
+            this.fetchQAImage();
+        },
+        fetchQAImage() {
             this.imageLoading = true;
-            api.get('/api/patient_qa/fetch_image_by_id', { params: { project: this.project, _id: _id, vertebra: this.vertebra } })
+            api.get('/api/patient_qa/fetch_image_by_id', { params: { project: this.project, _id: this.current_uuid, vertebra: this.vertebra, variant: this.viewingOriginal ? 'original' : 'current' } })
                 .then((res) => {
                 this.QAsrc = `data:image/png;base64, ` + res.data.image;
                 this.status = res.data.status;
                 this.input_path = res.data.input_path;
                 this.acquisition_date = res.data.acquisition_date;
                 this.compartments = res.data.compartments;
+                this.hasOriginalImage = res.data.has_original;
             })
                 .catch(() => {
                 // Error already surfaced via toast by the shared api client.
@@ -139,6 +148,10 @@ export default {
                 .finally(() => {
                 this.imageLoading = false;
             });
+        },
+        toggleOriginal() {
+            this.viewingOriginal = !this.viewingOriginal;
+            this.fetchQAImage();
         },
         NextImage(){
             var _id;
@@ -255,13 +268,52 @@ export default {
         active_uid(elem) {
             return this.current_uuid === elem;
         },
+        editContour() {
+            this.$router.push({
+                name: 'contourEditor',
+                params: { project: this.project, vertebra: this.vertebra, patient_id: this.currentPID },
+                query: { series: this.current_uuid },
+            });
+        },
         changePatient(elem){
             this.currentPID = elem;
-            this.seriesIdx = 0; 
+            this.seriesIdx = 0;
             this.idList = this.sortedIdList(this.currentPID);
             const _id = this.idList[this.seriesIdx];
             this.GetQAImage(_id);
-            this.$router.push({name: this.$router.currentRoute.name, params: {patient_id:elem}});  
+            this.fetchAvailableVertebrae();
+            this.$router.push({name: this.$router.currentRoute.name, params: {patient_id:elem}});
+        },
+        fetchAvailableVertebrae() {
+            // Every vertebral level this patient has data for (across the whole project, not
+            // just the one we're currently viewing), so the level dropdown can jump directly
+            // between them without leaving the page.
+            return api.get('/api/database/get_patient_filter_options', { params: { project: this.project, patient_id: this.currentPID } })
+                .then((res) => {
+                    this.availableVertebrae = [...new Set(res.data.data.map((o) => o.vertebra))].sort();
+                })
+                .catch(() => {
+                    // Error already surfaced via toast by the shared api client.
+                });
+        },
+        async changeVertebra(newVertebra) {
+            if (!newVertebra || newVertebra === this.vertebra) return;
+            this.vertebra = newVertebra;
+            const keepPID = this.currentPID;
+            await Promise.all([this.fetchPatientList(), this.fetchFilteredList()]);
+            if (this.patientList.includes(keepPID)) {
+                this.currentPID = keepPID;
+                this.patientIdx = this.patientList.indexOf(keepPID);
+                this.idList = this.sortedIdList(this.currentPID);
+            } else {
+                // This patient has no data at the new level (shouldn't normally happen, since
+                // the dropdown is only populated with levels this patient actually has) - fall
+                // back to the same to-do/failed/passed preference selectInitialPatient uses.
+                this.selectInitialPatient();
+            }
+            this.seriesIdx = 0;
+            this.GetQAImage(this.idList[this.seriesIdx]);
+            this.$router.push({ name: 'patientPredictions', params: { project: this.project, vertebra: newVertebra, patient_id: this.currentPID } });
         },
         filterPatients(){
             // Where filterstatus is true
@@ -319,6 +371,7 @@ export default {
     async created() {
         await Promise.all([this.fetchPatientList(), this.fetchFilteredList()]);
         this.selectInitialPatient();
+        this.fetchAvailableVertebrae();
         // An explicit ?series= query param (e.g. arriving from a PatientPage chart click)
         // overrides the default first-image selection, so the QA view jumps straight to it.
         const querySeries = this.$route.query.series;
@@ -334,7 +387,7 @@ export default {
     beforeUnmount() {
         document.removeEventListener('click', this.handleClickOutsideFilter);
     },
-    components: {Modal, Spinner, Badge, Popover, failureForm, Multiselect}
+    components: {Modal, Spinner, Badge, Popover, failureForm, Multiselect, Select}
 }
 
 
@@ -410,13 +463,25 @@ export default {
 </div>
 </div>
 
+<!-- Jump directly to another vertebral level for this same patient -->
+<div v-if="availableVertebrae.length > 1" class="flex mx-auto w-3/4 mt-4 justify-center">
+    <div class="w-64">
+        <Select
+            label="Vertebral level"
+            :model-value="vertebra"
+            :options="availableVertebrae"
+            @update:model-value="changeVertebra"
+        />
+    </div>
+</div>
+
 
 
 <!-- Selector for cycling through images for this patient-->
 <div class="bg-surface-header flex-grow mt-6">
     <div class="mt-6">
     <p class="text-ink-muted text-xs px-2 pb-1 text-center">{{ idList.length }} scan{{ idList.length === 1 ? '' : 's' }} for this patient, oldest to newest</p>
-    <div class="flex gap-2 overflow-x-auto pb-2 px-2 justify-start">
+    <div class="flex gap-2 overflow-x-auto pb-2 px-2 justify-start w-1/2 mx-auto">
         <button v-for="item in this.idList" :key="item" type="button"
             class="shrink-0 px-4 h-10 rounded-full border font-bold whitespace-nowrap transition-colors duration-150"
             :class="active_uid(item) ? 'bg-brand-500/15 border-brand-400 text-brand-300' : 'bg-surface-raised border-line-subtle text-ink-secondary hover:text-brand-400 hover:border-brand-400/50'"
@@ -425,6 +490,14 @@ export default {
         </button>
     </div>
     <!-- Image -->
+
+    <div v-if="hasOriginalImage" class="flex justify-center items-center gap-3 mt-4">
+        <Badge v-if="!viewingOriginal" variant="warn">You are viewing an edited contour</Badge>
+        <button @click="toggleOriginal();"
+            class="bg-surface-raised hover:bg-line-default text-ink-primary h-8 px-4 border border-line-subtle rounded shadow-inner shadow-black/30 text-sm font-bold transition-colors duration-150">
+            {{ viewingOriginal ? 'Back to edited' : 'View original AI prediction' }}
+        </button>
+    </div>
 
     <div class="relative flex justify-center mt-4">
         <div v-if="imageLoading" class="absolute inset-0 flex items-center justify-center">
@@ -473,7 +546,7 @@ export default {
 
 </div>
 <div class="flex mx-auto w-3/4 mt-1">
-    <div class="grid grid-cols-4 gap-4 place-items-center w-full">
+    <div class="grid grid-cols-5 gap-4 place-items-center w-full">
         <div class=""> <button class="bg-red-400 hover:bg-red-500 text-zinc-900 h-10
             w-40 border border-line-subtle rounded shadow-sm shadow-red-300/40 font-extrabold transition-colors duration-150" @click="this.showFailForm()">Fail
         </button>
@@ -486,6 +559,11 @@ export default {
         <div class="grid">
             <button @click="ShowRegistration();" :disabled="disableRegistration"
                 class="bg-surface-raised hover:bg-line-default text-ink-primary h-10 w-40 border border-line-subtle rounded shadow-inner shadow-black/30 font-extrabold transition-colors duration-150"> Show registration</button>
+        </div>
+
+        <div class="grid">
+            <button @click="editContour();"
+                class="bg-surface-raised hover:bg-line-default text-ink-primary h-10 w-40 border border-line-subtle rounded shadow-inner shadow-black/30 font-extrabold transition-colors duration-150"> Edit contour</button>
         </div>
 
         <div class="">

@@ -73,15 +73,24 @@ def fetchImageByID():
     _id = request.args.get("_id")
     project = request.args.get("project")
     vertebra = request.args.get("vertebra")
-    database = mongo.db 
+    variant = request.args.get("variant", "current")
+    database = mongo.db
     response = database.quality_control.find_one({f"_id": _id,'project': project})
     im_info = database.images.find_one({"_id": response["_id"]})
     print(response, im_info, flush=True)
     #TODO Faster if image stored in db? Instead of loading and converting
-    if vertebra in response['paths_to_sanity_images']['ALL']:
-        path_to_sanity_ = response['paths_to_sanity_images']['ALL'][vertebra] 
+    paths_all = response['paths_to_sanity_images']['ALL']
+    original_all = response.get('original_paths_to_sanity_images', {}).get('ALL', {})
+    has_original = isinstance(paths_all, dict) and vertebra in original_all
+
+    if variant == 'original':
+        if not has_original:
+            abort(404, {"message": f"No original sanity image for vertebra={vertebra}"})
+        path_to_sanity_ = original_all[vertebra]
+    elif isinstance(paths_all, dict) and vertebra in paths_all:
+        path_to_sanity_ = paths_all[vertebra]
     else:
-        path_to_sanity_ = response['paths_to_sanity_images']['ALL']
+        path_to_sanity_ = paths_all
     with open(path_to_sanity_, 'rb') as f:
         image = bytearray(f.read())
     encoded_im = base64.b64encode(image).decode('utf8').replace("'",'"')
@@ -107,7 +116,8 @@ def fetchImageByID():
         "series_uuid": im_info["series_uuid"],
         "acquisition_date": im_info["acquisition_date"],
         "input_path": im_info["input_path"],
-        "vertebra": vertebra
+        "vertebra": vertebra,
+        "has_original": has_original
     }), 200)
 
     return res

@@ -40,6 +40,8 @@ export default {
             imageDict: Object(), // Keys= pids, Values = list of image ids in db
             debugInfoCache: {}, // Raw images-doc info for the "more info" popover, keyed by series uuid
             debugInfoLoading: false,
+            viewingOriginal: false, // Whether the main QA image currently shown is the pre-edit AI original
+            hasOriginalImage: false, // Whether this vertebra has ever been edited (so a toggle makes sense)
 
         };
     },
@@ -61,8 +63,9 @@ export default {
                 this.toast.info('That was the last image!');
                 return;
             }
+            this.viewingOriginal = false; // A newly-navigated-to scan always starts on the current view.
             this.imageLoading = true;
-            api.post('/api/sanity/fetch_image_by_id', null, { params: { project: this.project, _id: _id, vertebra: this.vertebra } })
+            api.post('/api/sanity/fetch_image_by_id', null, { params: { project: this.project, _id: _id, vertebra: this.vertebra, variant: 'current' } })
                 .then((res) => {
                 this.src = `data:image/png;base64, ` + res.data.image;
                 this.patientID = res.data.patient_id;
@@ -71,6 +74,7 @@ export default {
                 this.acquisitionDate = res.data.acquisition_date;
                 this.inputPath = res.data.input_path;
                 this.vertebra = res.data.vertebra;
+                this.hasOriginalImage = res.data.has_original;
                 this.getSummary();
                 this.GetSpine();
                 this.getQCReport();
@@ -148,8 +152,9 @@ export default {
                 this.toast.info('That was the last image!');
                 return;
             }
+            this.viewingOriginal = false; // A newly-navigated-to scan always starts on the current view.
             this.imageLoading = true;
-            api.post('/api/sanity/fetch_image_by_id', null, { params: { project: this.project, _id: _id, vertebra: this.vertebra } })
+            api.post('/api/sanity/fetch_image_by_id', null, { params: { project: this.project, _id: _id, vertebra: this.vertebra, variant: 'current' } })
                 .then((res) => {
                 this.src = `data:image/png;base64, ` + res.data.image;
                 this.patientID = res.data.patient_id;
@@ -158,6 +163,7 @@ export default {
                 this.acquisitionDate = res.data.acquisition_date;
                 this.inputPath = res.data.input_path;
                 this.vertebra = res.data.vertebra;
+                this.hasOriginalImage = res.data.has_original;
                 this.getSummary();
                 this.GetSpine();
                 this.getQCReport();
@@ -188,8 +194,9 @@ export default {
                 this.toast.info("You've reached the start");
                 return;
             }
+            this.viewingOriginal = false; // A newly-navigated-to scan always starts on the current view.
             this.imageLoading = true;
-            api.post('/api/sanity/fetch_image_by_id', null, { params: { project: this.project, _id: _id, vertebra: this.vertebra } })
+            api.post('/api/sanity/fetch_image_by_id', null, { params: { project: this.project, _id: _id, vertebra: this.vertebra, variant: 'current' } })
                 .then((res) => {
                 this.src = `data:image/png;base64, ` + res.data.image;
                 this.patientID = res.data.patient_id;
@@ -198,6 +205,7 @@ export default {
                 this.acquisitionDate = res.data.acquisition_date;
                 this.inputPath = res.data.input_path;
                 this.vertebra = res.data.vertebra;
+                this.hasOriginalImage = res.data.has_original;
                 this.getSummary();
                 this.GetSpine();
                 this.getQCReport();
@@ -247,6 +255,22 @@ export default {
         ShowSpine() {
             // Reveal spine prediction
             this.showSpineSanity = true;
+        },
+        toggleOriginal() {
+            this.viewingOriginal = !this.viewingOriginal;
+            const _id = this.idList[this.idx];
+            this.imageLoading = true;
+            api.post('/api/sanity/fetch_image_by_id', null, { params: { project: this.project, _id: _id, vertebra: this.vertebra, variant: this.viewingOriginal ? 'original' : 'current' } })
+                .then((res) => {
+                this.src = `data:image/png;base64, ` + res.data.image;
+                this.hasOriginalImage = res.data.has_original;
+            })
+                .catch(() => {
+                // Error already surfaced via toast by the shared api client.
+            })
+                .finally(() => {
+                this.imageLoading = false;
+            });
         },
         getSummary(){
             api.get('/api/sanity/get_summary', { params: { project: this.project, vertebra: this.vertebra } })
@@ -372,6 +396,14 @@ export default {
 
     <!-- Wrap image in tabs based on acquisition date & modality-->
 
+
+    <div v-if="hasOriginalImage" class="flex justify-center items-center gap-3">
+        <Badge v-if="!viewingOriginal" variant="warn">You are viewing an edited contour</Badge>
+        <button @click="toggleOriginal();"
+            class="bg-surface-raised hover:bg-line-default text-ink-primary h-8 px-4 border border-line-subtle rounded shadow-inner shadow-black/30 text-sm font-bold transition-colors duration-150">
+            {{ viewingOriginal ? 'Back to edited' : 'View original AI prediction' }}
+        </button>
+    </div>
 
     <!-- MAIN IMAGE -->
     <div class="relative flex w-full justify-center p-5 hover:h-full ">

@@ -150,7 +150,7 @@ def get_levels_to_QA():
         data = []
         for uuid in uuids:
             levels = database.segmentation.find_one({"project": project, "series_uuid": uuid}, {'statistics': 1})
-            data.extend(list(levels['statistics'].keys()))
+            data.extend([k for k in levels['statistics'].keys() if k != '_original'])
         return set(data)
 
     unique_levels= list(gather_from_segmentation_db())
@@ -194,9 +194,12 @@ def get_patient_filter_options():
         modality = img.get('modality')
         acquisition_date = img.get('acquisition_date')
 
-        for level_key, compartments in doc.get('statistics', {}).items():
-            vertebra = level_key.replace('-edited', '').replace('-manual', '')
+        for vertebra, compartments in doc.get('statistics', {}).items():
+            if vertebra == '_original':
+                continue
             for compartment in compartments.keys():
+                if compartment == '_original':
+                    continue
                 key = (vertebra, compartment, modality)
                 if key not in combos or parse_date(acquisition_date) > parse_date(combos[key]):
                     combos[key] = acquisition_date
@@ -554,6 +557,46 @@ def reassign_patient():
     res = make_response(jsonify({
         "message": f"Moved {len(moved)} series for patient {req['patient_id']} from {req['current_project']} to {req['new_project']}.",
         "series_uuids": moved,
+    }), 200)
+    return res
+
+
+@bp.route('/api/database/delete_patient', methods=['POST'])
+def delete_patient():
+    """
+    Permanently delete every document (images/segmentation/spine/quality_control) and the
+    on-disk output directory for a single patient within one project. Used by the delete
+    action on the project page's patient table.
+    """
+    req = request.get_json()
+    required_args = ['patient_id', 'project']
+    assert all([x in req for x in required_args]), f"Missing some required args. Provide all of: {required_args}"
+
+    if _patient_has_pending_jobs(req['patient_id']):
+        res = make_response(jsonify({
+            "message": f"Patient {req['patient_id']} has jobs queued or in progress - try again once they finish.",
+            "skipped": True,
+        }), 409)
+        return res
+
+    from app import mongo
+    database = mongo.db
+    output_base_dir = current_app.config['OUTPUT_DIR']
+
+    filter_query = {"patient_id": req['patient_id'], "project": req['project']}
+    deleted_series = database.images.distinct('series_uuid', filter_query)
+
+    for coll in ['images', 'segmentation', 'spine', 'quality_control']:
+        database[coll].delete_many(filter_query)
+
+    output_dir = os.path.join(output_base_dir, req['project'], req['patient_id'])
+    if os.path.isdir(output_dir):
+        logger.info(f"Removing patient output directory: {output_dir}")
+        shutil.rmtree(output_dir)
+
+    res = make_response(jsonify({
+        "message": f"Deleted {len(deleted_series)} series for patient {req['patient_id']} from {req['project']}.",
+        "series_uuids": deleted_series,
     }), 200)
     return res
 

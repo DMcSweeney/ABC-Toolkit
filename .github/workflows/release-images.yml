@@ -14,8 +14,8 @@ jobs:
             context: backend
           - image: dmcsweeney/bodycomp-frontend
             context: frontend
-          - image: dmcsweeney/bodycomp-conquest
-            context: conquest
+          - image: dmcsweeney/bodycomp-orthanc
+            context: orthanc
     steps:
       - name: Checkout
         uses: actions/checkout@v4

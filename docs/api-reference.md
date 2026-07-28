@@ -22,7 +22,7 @@ Runnable examples for most endpoints below live in [examples/api/](../examples/a
 
 - [Health check](#health-check)
 - [Jobs — `/api/jobs`](#jobs--apijobs)
-- [Conquest (DICOM ingestion) — `/api/conquest`](#conquest-dicom-ingestion--apiconquest)
+- [Orthanc (DICOM ingestion) — `/api/orthanc`](#orthanc-dicom-ingestion--apiorthanc)
 - [Database — `/api/database`](#database--apidatabase)
 - [Post-processing — `/api/post_process`](#post-processing--apipost_process)
 - [Sanity QA (legacy, per-vertebra) — `/api/sanity`](#sanity-qa-legacy-per-vertebra--apisanity)
@@ -120,21 +120,22 @@ Submits a batch of spine/segment jobs from one uploaded CSV. `multipart/form-dat
 
 ---
 
-## Conquest (DICOM ingestion) — `/api/conquest`
+## Orthanc (DICOM ingestion) — `/api/orthanc`
 
-### `POST /api/conquest/handle_trigger`
-Not meant to be called directly — this is invoked automatically by the Conquest DICOM server's Lua trigger script ([conquest/trigger.lua](../conquest/trigger.lua)) whenever a new DICOM object is received on the built-in PACS listener.
+### `POST /api/orthanc/handle_trigger`
+Not meant to be called directly — this is invoked automatically by the Orthanc DICOM server's Python plugin script ([orthanc/trigger.py](../orthanc/trigger.py)) once a series is "stable" (no new instance received for `StableAge` seconds) on the built-in PACS listener.
 
 | Arg (query string) | Required | Description |
 |---|---|---|
-| `series_uid` | yes | DICOM SeriesInstanceUID of the received object. |
+| `series_uid` | yes | DICOM SeriesInstanceUID of the received series. |
 | `study_uid` | yes | DICOM StudyInstanceUID. |
 | `patient_id` | yes | DICOM PatientID. |
-| `modality` | yes | DICOM Modality — handled values: `CT`, `CBCT` (inferred when `modality=="CT"` and `manufacturer` is Elekta), `RTSTRUCT`. `RTPLAN`/`RTDOSE` are explicitly rejected (raises); anything else raises "can't handle modality."|
-| `manufacturer` | yes | DICOM Manufacturer — used only to detect the CT→CBCT special case above. |
+| `modality` | yes | DICOM Modality — handled values: `CT`, `CBCT` (inferred when `modality=="CT"` and `manufacturer_model_name` contains Elekta), `RTSTRUCT`. `RTPLAN`/`RTDOSE` are explicitly rejected (raises); anything else raises "can't handle modality."|
+| `manufacturer_model_name` | yes | DICOM ManufacturerModelName (0008,1090) — used only to detect the CT→CBCT special case above. |
+| `orthanc_series_id` | yes | Orthanc's internal resource ID for the series, used to pull its instances via Orthanc's REST API (`GET /series/{id}/instances`, `GET /instances/{id}/file`). |
 
 Behavior by modality:
-- **CT**: files matching the request's header tags are moved from the Conquest inbox into `/data/inbox/<patient_id>/<study_uid>/<series_uid>/<modality>/`, then a spine job is submitted followed by a dependent segment job (`num_slices=1`, project `"Unassigned"`). No DICOM header field is reliable enough to auto-route scans to the correct real project (Study Description isn't consistently populated, and there's no site-specific AE-title/port routing), so everything lands in the `Unassigned` project and a human assigns it to the right project afterward via [`POST /api/database/reassign_patient`](#post-apidatabasereassign_patient) or [`POST /api/database/assign_patients_from_csv`](#post-apidatabaseassign_patients_from_csv) (surfaced in the frontend as "Assign to Project").
+- **CT**: instances are pulled from Orthanc's REST API into `/data/inbox/<patient_id>/<study_uid>/<series_uid>/<modality>/`, then a spine job is submitted followed by a dependent segment job (`num_slices=1`, project `"Unassigned"`). No DICOM header field is reliable enough to auto-route scans to the correct real project (Study Description isn't consistently populated, and there's no site-specific AE-title/port routing), so everything lands in the `Unassigned` project and a human assigns it to the right project afterward via [`POST /api/database/reassign_patient`](#post-apidatabasereassign_patient) or [`POST /api/database/assign_patients_from_csv`](#post-apidatabaseassign_patients_from_csv) (surfaced in the frontend as "Assign to Project").
 - **CBCT**: looks up an existing labelled planning CT for the same `patient_id` in the `spine` Mongo collection; raises if none is found. Submits one `infer/register` job to align the CBCT onto that planning CT (see [`POST /api/jobs/infer/register`](#post-apijobsinferregister)), then one segment job per vertebral level the planning CT was labelled at (that also has a CBCT model), each depending on the registration job (`depends_on`) and with `resample=True`, `reference_scan=<planning CT id>`, `calibrate_cbct=True`, `calibration_structure="brainstem"` hardcoded — no `slice_number` is set explicitly; it's still the planning CT's own recorded slice number for that level, which only becomes valid for the CBCT once the registration job's transform has been used to resample it onto the planning CT's grid (see the `infer/segment` `slice_number` row above).
 - **RTSTRUCT**: links the struct file path to the matching planning CT's `images` Mongo entry (matched by `study_uid`, or by parsing the RTSTRUCT's `ReferencedFrameOfReferenceSequence` if no match is found by study).
 - **RTPLAN / RTDOSE**: always raises (rejected).

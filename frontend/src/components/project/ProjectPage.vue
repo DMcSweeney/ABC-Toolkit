@@ -57,7 +57,7 @@ export default {
         :icon="UserGroupIcon"
     />
     <div v-else>
-        <PatientTable :patients=patient_info />
+        <PatientTable :patients=patient_info @deleted="FetchPatients" />
     </div>
 
 

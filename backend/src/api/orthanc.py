@@ -1,84 +1,61 @@
 """
-Conquest endpoints
+Orthanc endpoints
 
 """
 import os
-import shutil
-import ast
 import logging
+import pydicom
 from flask import Blueprint, request, make_response, jsonify
 import requests
-import pydicom
-import time
 
 from abcTK.constants import UNASSIGNED_PROJECT
 
-bp = Blueprint('/api/conquest', __name__)
+bp = Blueprint('/api/orthanc', __name__)
 logger = logging.getLogger(__name__)
+
+ORTHANC_URL = "http://orthanc:8042"
+ORTHANC_AUTH = (os.environ['ORTHANC_USER'], os.environ['ORTHANC_PASSWORD'])
 
 spine_url = f"https://backend:5001/api/jobs/infer/spine"
 segment_url = f"https://backend:5001/api/jobs/infer/segment"
 register_url = f"https://backend:5001/api/jobs/infer/register"
 
 
-@bp.route('/api/conquest/handle_trigger', methods=["POST"])
+@bp.route('/api/orthanc/handle_trigger', methods=["POST"])
 def handle_trigger():
     series_uid = request.args.get("series_uid")
     study_uid = request.args.get("study_uid")
     patient_id = request.args.get("patient_id")
     modality = request.args.get("modality")
-    manufacturer= request.args.get("manufacturer")
+    manufacturer_model_name = request.args.get("manufacturer_model_name") or ""
+    orthanc_series_id = request.args.get("orthanc_series_id")
 
     logger.info(f"Trigger received for patient_id: {patient_id} -- series: {series_uid} \
--- study: {study_uid} -- modality: {modality} -- manufacturer: {manufacturer}")
-    
-    ##TODO CGET the series? 
+-- study: {study_uid} -- modality: {modality} -- manufacturer_model_name: {manufacturer_model_name}")
+
+    if modality == 'CT' and 'elekta' in manufacturer_model_name.lower():
+        modality = 'CBCT'
+
+    ## Make the directories and pull the images from Orthanc's REST API
     patient_path = os.path.join('/data/inbox/', patient_id)
-
-    if modality == 'CT' and manufacturer.lower() == 'elekta':
-        modality='CBCT'
-
-    ## Make the directories and organise the images on receipt
     image_path = os.path.join(patient_path, study_uid, series_uid, modality)
-    logger.info(f'Moving image to: {image_path}')
+    logger.info(f'Fetching series {orthanc_series_id} from Orthanc into: {image_path}')
     os.makedirs(image_path, exist_ok=True)
-    
-    ## Tags to read from every dicom header
-    header_keys = {
-        'patient_id': (0x0010, 0x0020), 
-        'series_uid': (0x0020, 0x000e),
-        'study_uid': (0x0020,0x000d),
-        'modality': (0x0008,0x0060)
-    }
-    # ++++++++++++++++++++++++++
-    def incoming_file_checks(filepath):
-        if not os.path.isfile(filepath): return False ## Skip if directory
 
-        ## Check that the DCM matches the study, series and modality of the request.
-        dcm = pydicom.dcmread(filepath, stop_before_pixels=True)
+    instances = requests.get(f"{ORTHANC_URL}/series/{orthanc_series_id}/instances", auth=ORTHANC_AUTH).json()
+    for instance in instances:
+        instance_id = instance['ID'] if isinstance(instance, dict) else instance
+        main_tags = instance.get('MainDicomTags', {}) if isinstance(instance, dict) else {}
+        filename = f"{main_tags.get('SOPInstanceUID', instance_id)}.dcm"
 
-        data = {}
-        for key, tag in header_keys.items():
-            group, element = tag
-            data[key] = str(dcm[group, element].value) if [group, element] in dcm else None
+        dest = os.path.join(image_path, filename)
+        if os.path.isfile(dest):
+            continue ## Skip if already fetched (idempotent re-delivery)
 
-        if not all([val == request.args.get(key) for key, val in data.items()]): ## If not all the elements match the request, skip
-            # logger.info("Tags in header differ from those in request.")
-            # logger.info(f"Header: {[(v, k) for v, k in data.items()]}")
-            # logger.info(f"Request: {[(v, k) for v, k in request.args.items()]}")
-            
-            return False
-        
-        return True
-    ##++++++++++++++++++++++++++++++++++
-        
-    for file in os.listdir(patient_path):
-        filepath = os.path.join(patient_path, file)
-        if not incoming_file_checks(filepath): continue ## If fails the checks (i.e. file header needs to match request header)
-
-        if os.path.isfile(os.path.join(image_path, file)): continue ## Skip if already exists in destination
-        shutil.move(filepath, image_path)
-    logger.info("Moved")
+        content = requests.get(f"{ORTHANC_URL}/instances/{instance_id}/file", auth=ORTHANC_AUTH).content
+        with open(dest, 'wb') as f:
+            f.write(content)
+    logger.info(f"Fetched {len(instances)} instance(s)")
 
 
     ## Then enqueue job
@@ -88,7 +65,7 @@ def handle_trigger():
         spine = requests.post(spine_url, json=spine_body, verify=False)
         segment_body = {"input_path": image_path, "project": UNASSIGNED_PROJECT, "patient_id": patient_id, 'series_uuid': series_uid,
         "modality": modality,  "num_slices": "1"}
-        segment_body['depends_on'] = spine.json()['job-ID'] ## Update segment job with the job id 
+        segment_body['depends_on'] = spine.json()['job-ID'] ## Update segment job with the job id
         segment = requests.post(segment_url, json=segment_body, verify=False) ## Submit segment job
 
     elif modality == 'CBCT':
@@ -147,7 +124,7 @@ def handle_trigger():
         logger.warning(f"{modality} received but will be ignored.")
         raise ValueError(f"{modality} received but will be ignored.")
     else:
-        raise ValueError(f"Conquest pipeline can't handle modality provided ({modality}), must be one of CT, CBCT or RTSTRUCT")
+        raise ValueError(f"Orthanc pipeline can't handle modality provided ({modality}), must be one of CT, CBCT or RTSTRUCT")
 
     ## Output: report? success message? Link to sanity?
     res = make_response(jsonify({
@@ -157,4 +134,3 @@ def handle_trigger():
     }), 200)
 
     return res
-    

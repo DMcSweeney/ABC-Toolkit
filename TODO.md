@@ -1,0 +1,3 @@
+- Implement project delete
+- Add segment all vertebra in submit jobs window. Both when submitting a single job and batch jobs.
+- [x] Replace conquest with orthanc.

@@ -15,7 +15,7 @@
 
 The ABC-Toolkit is a web-app for large-scale body composition analyses of CT, MR, and cone-beam CT (CBCT) scans.
 
-A [DICOM server](https://github.com/marcelvanherk/Conquest-DICOM-Server) is built-in so images can be sent directly from clinical PACS and automatically processed.   
+A [DICOM server](https://orthanc.uclouvain.be/) is built-in so images can be sent directly from clinical PACS and automatically processed.   
 
 See the [full documentation](https://dmcsweeney.github.io/ABC-Toolkit/) for the complete feature list, system architecture, and available segmentation models.
 

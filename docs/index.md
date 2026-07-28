@@ -105,7 +105,7 @@ if __name__ == '__main__':
 
 <img src="ABC-system-architecture.png"/>
 
-There are two ways to get images into ABC (left side of the diagram, blue box): **scripting mode**, where you (or a script) send HTTP requests directly — the `curl`/Python examples throughout this page — or **real-time mode**, where a clinical PACS or DICOM store sends images straight to the built-in Conquest DICOM server, which POSTs a trigger to the backend as each series arrives (`/api/conquest/handle_trigger`, invoked automatically — you don't call this yourself).
+There are two ways to get images into ABC (left side of the diagram, blue box): **scripting mode**, where you (or a script) send HTTP requests directly — the `curl`/Python examples throughout this page — or **real-time mode**, where a clinical PACS or DICOM store sends images straight to the built-in Orthanc DICOM server, which POSTs a trigger to the backend as each series arrives (`/api/orthanc/handle_trigger`, invoked automatically — you don't call this yourself).
 
 The **Client** box is the Vue frontend (default `https://localhost:5000`). 
 

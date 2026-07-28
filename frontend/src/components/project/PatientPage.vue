@@ -412,8 +412,22 @@ export default {
             const point = evt.points && evt.points[0];
             if (!point || !point.customdata || !point.customdata.series_uuid) return;
             const { series_uuid, vertebra } = point.customdata;
+            // Shift+click jumps straight to the contour editor for this exact scan, since the
+            // point already carries the series_uuid we need - a plain click keeps the existing
+            // behaviour of browsing that scan's QA images.
+            if (evt.event && evt.event.shiftKey) {
+                this.editContour(series_uuid, vertebra);
+                return;
+            }
             this.$router.push({
                 name: 'patientPredictions',
+                params: { project: this.$route.params.project, vertebra, patient_id: this.patientID },
+                query: { series: series_uuid },
+            });
+        },
+        editContour(series_uuid, vertebra){
+            this.$router.push({
+                name: 'contourEditor',
                 params: { project: this.$route.params.project, vertebra, patient_id: this.patientID },
                 query: { series: series_uuid },
             });
@@ -421,6 +435,12 @@ export default {
         viewPredictions(){
             const vertebra = this.selectedVertebrae[0] || 'C3';
             this.$router.push({ name: 'patientPredictions', params: { project: this.$route.params.project, vertebra, patient_id: this.patientID}})
+        },
+        editContourForPatient(){
+            // No specific scan is selected here (unlike a chart-point click) - the editor
+            // resolves this patient's most recent scan for the chosen vertebra itself.
+            const vertebra = this.selectedVertebrae[0] || 'C3';
+            this.$router.push({ name: 'contourEditor', params: { project: this.$route.params.project, vertebra, patient_id: this.patientID } });
         },
         generateReport(){
             if (!this.combos.length) {
@@ -501,6 +521,9 @@ export default {
             </Button>
             <Button variant="secondary" @click="viewPredictions();">
                  View predictions
+            </Button>
+            <Button variant="secondary" @click="editContourForPatient();">
+                 Edit contour
             </Button>
         </div>
     </div>
@@ -622,6 +645,7 @@ export default {
                 Select at least one vertebra and compartment to plot a trend.
             </div>
             <div v-show="!bodyCompLoading && combos.length" id="bodycomp-plot" class="h-[450px] rounded overflow-hidden border border-line-subtle"></div>
+            <p v-if="combos.length" class="text-ink-muted text-xs pt-1">Tip: shift+click a point to jump straight to the contour editor for that scan.</p>
         </div>
 
         <!-- Population comparison chart -->
