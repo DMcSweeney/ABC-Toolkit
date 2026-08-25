@@ -13,7 +13,7 @@ from abcTK.constants import UNASSIGNED_PROJECT
 bp = Blueprint('/api/orthanc', __name__)
 logger = logging.getLogger(__name__)
 
-ORTHANC_URL = "http://orthanc:8042"
+ORTHANC_URL = "https://orthanc:8042"
 ORTHANC_AUTH = (os.environ['ORTHANC_USER'], os.environ['ORTHANC_PASSWORD'])
 
 spine_url = f"https://backend:5001/api/jobs/infer/spine"
@@ -42,7 +42,7 @@ def handle_trigger():
     logger.info(f'Fetching series {orthanc_series_id} from Orthanc into: {image_path}')
     os.makedirs(image_path, exist_ok=True)
 
-    instances = requests.get(f"{ORTHANC_URL}/series/{orthanc_series_id}/instances", auth=ORTHANC_AUTH).json()
+    instances = requests.get(f"{ORTHANC_URL}/series/{orthanc_series_id}/instances", auth=ORTHANC_AUTH, verify=False).json()
     for instance in instances:
         instance_id = instance['ID'] if isinstance(instance, dict) else instance
         main_tags = instance.get('MainDicomTags', {}) if isinstance(instance, dict) else {}
@@ -52,7 +52,7 @@ def handle_trigger():
         if os.path.isfile(dest):
             continue ## Skip if already fetched (idempotent re-delivery)
 
-        content = requests.get(f"{ORTHANC_URL}/instances/{instance_id}/file", auth=ORTHANC_AUTH).content
+        content = requests.get(f"{ORTHANC_URL}/instances/{instance_id}/file", auth=ORTHANC_AUTH, verify=False).content
         with open(dest, 'wb') as f:
             f.write(content)
     logger.info(f"Fetched {len(instances)} instance(s)")
