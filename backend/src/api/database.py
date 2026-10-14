@@ -16,6 +16,7 @@ from rq.registry import StartedJobRegistry
 import shutil
 
 from abcTK.constants import UNASSIGNED_PROJECT
+from abcTK.orthanc_client import delete_series_by_uid
 
 bp = Blueprint('api/database', __name__)
 logger = logging.getLogger(__name__)
@@ -565,8 +566,8 @@ def reassign_patient():
 def delete_patient():
     """
     Permanently delete every document (images/segmentation/spine/quality_control) and the
-    on-disk output directory for a single patient within one project. Used by the delete
-    action on the project page's patient table.
+    on-disk output directory for a single patient within one project, plus those series (and
+    their RTSTRUCTs) in Orthanc. Used by the delete action on the project page's patient table.
     """
     req = request.get_json()
     required_args = ['patient_id', 'project']
@@ -585,9 +586,17 @@ def delete_patient():
 
     filter_query = {"patient_id": req['patient_id'], "project": req['project']}
     deleted_series = database.images.distinct('series_uuid', filter_query)
+    rtstruct_series = [x for x in database.images.distinct('rtstruct_series_uuid', filter_query) if x]
 
     for coll in ['images', 'segmentation', 'spine', 'quality_control']:
         database[coll].delete_many(filter_query)
+
+    ## Also purge them from Orthanc - best-effort, anything missed still expires under the retention rules
+    for series_uid in deleted_series + rtstruct_series:
+        try:
+            delete_series_by_uid(series_uid)
+        except Exception as e:
+            logger.warning(f"Could not delete series {series_uid} from Orthanc: {e}")
 
     output_dir = os.path.join(output_base_dir, req['project'], req['patient_id'])
     if os.path.isdir(output_dir):

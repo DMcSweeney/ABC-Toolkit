@@ -64,12 +64,15 @@ def infer_register(req):
     moving_loader, _ = get_loader_function(req['input_path'])
     moving_image = moving_loader(req['input_path'])  # e.g. CBCT
 
-    fixed_loader, _ = get_loader_function(pct_spine['input_path'])
-    fixed_image = fixed_loader(pct_spine['input_path'])  # planning CT
+    # Orthanc-received planning CTs are restored into the CBCT's own inbox dir (see api/orthanc.py),
+    # since their original inbox copy is removed once their own pipeline finishes.
+    fixed_path = req.get('reference_input_path', pct_spine['input_path'])
+    fixed_loader, _ = get_loader_function(fixed_path)
+    fixed_image = fixed_loader(fixed_path)  # planning CT
 
     logger.info(
         f"Registering moving scan ({req['input_path']}, size {moving_image.GetSize()}, spacing {moving_image.GetSpacing()}) "
-        f"onto fixed scan ({pct_spine['input_path']}, size {fixed_image.GetSize()}, spacing {fixed_image.GetSpacing()})"
+        f"onto fixed scan ({fixed_path}, size {fixed_image.GetSize()}, spacing {fixed_image.GetSpacing()})"
     )
 
     fixed_to_moving, metrics = register_rigid(fixed_image, moving_image, log_dir=output_dir)

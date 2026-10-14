@@ -256,13 +256,17 @@ class segmentationEngine():
             from app import mongo
             query = mongo.db.images.find_one({"_id": kwargs['reference_scan']})
 
-            if 'rtstruct_path' not in query:
+            # Orthanc-received pCT/RTSTRUCT are restored into the CBCT's own inbox dir and passed
+            # in explicitly (see api/orthanc.py) - otherwise use the paths recorded in the db.
+            rtstruct_path = kwargs.get('reference_rtstruct_path', query.get('rtstruct_path'))
+            pCT_path = kwargs.get('reference_input_path', query['input_path'])
+            if rtstruct_path is None:
                 logger.error('No path to RTSTRUCT')
                 raise ValueError('No path to RTSTRUCT')
             
-            logger.info(f"Loading RTSTRUCT from {query['rtstruct_path']}")
-            assert os.path.isfile(query['rtstruct_path']), "Cannot read RTSTRUCT"
-            rtstruct = RTStructBuilder.create_from(dicom_series_path=query['input_path'], rt_struct_path=query['rtstruct_path'])
+            logger.info(f"Loading RTSTRUCT from {rtstruct_path}")
+            assert os.path.isfile(rtstruct_path), "Cannot read RTSTRUCT"
+            rtstruct = RTStructBuilder.create_from(dicom_series_path=pCT_path, rt_struct_path=rtstruct_path)
             matching_structures = [x for x in rtstruct.get_roi_names() if kwargs['calibration_structure'] == x.lower()]
             if not matching_structures:
                 logger.error(f"Structure {kwargs['calibration_structure']} not found in RTSTRUCT ({rtstruct.get_roi_names()})")
@@ -275,8 +279,8 @@ class segmentationEngine():
             mask = np.moveaxis(mask, -1, 0).astype(float)#
             # Load reference scan
             from abcTK.inference.segment import get_loader_function
-            pCT_loader, _ = get_loader_function(query['input_path'])
-            pCT = pCT_loader(query['input_path'])
+            pCT_loader, _ = get_loader_function(pCT_path)
+            pCT = pCT_loader(pCT_path)
             ## Do the calibration
             pCT_values = self.get_intensities_for_calibration(pCT, mask)
             CBCT_values = self.get_intensities_for_calibration(origImage, mask)

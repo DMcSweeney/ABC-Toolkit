@@ -25,6 +25,8 @@ from reportlab.platypus import SimpleDocTemplate, Paragraph, Spacer, Image as RL
 
 from rt_utils import RTStructBuilder
 
+from abcTK.orthanc_client import local_series
+
 
 bp = Blueprint('api/post_process', __name__)
 logger = logging.getLogger(__name__)
@@ -49,27 +51,29 @@ def getRTStruct():
         input_path = response['input_path'].replace('/data/inputs/', '/data/inputs/xnat/1.8/archive/') 
     else:
         input_path = response['input_path']
-    logger.info(f"Reading DICOM from {input_path}")
 
+    # Orthanc-received scans' inbox copies are removed after processing - restore from Orthanc if needed
+    with local_series(input_path, _id) as local_path:
+        logger.info(f"Reading DICOM from {local_path}")
 
-    # Point RTSTruct Builder to input dicom
-    rtstruct = RTStructBuilder.create_new(dicom_series_path=input_path)
-    for name, Mask in Masks.items():
-        mask = sitk.GetArrayFromImage(Mask).astype(bool) ## Need to re-order axes to match 
-        mask = np.moveaxis(np.transpose(mask), 0, 1)
-        logger.info(f"Adding {name} to RT-Struct. Shape: {mask.shape}")
-        rtstruct.add_roi(mask=mask, name=name)
+        # Point RTSTruct Builder to input dicom
+        rtstruct = RTStructBuilder.create_new(dicom_series_path=local_path)
+        for name, Mask in Masks.items():
+            mask = sitk.GetArrayFromImage(Mask).astype(bool) ## Need to re-order axes to match 
+            mask = np.moveaxis(np.transpose(mask), 0, 1)
+            logger.info(f"Adding {name} to RT-Struct. Shape: {mask.shape}")
+            rtstruct.add_roi(mask=mask, name=name)
 
-    ## Save RT struct and reply
-    if for_editing:
-        output_path = os.path.join('/data/outputs', project, 'masks_to_edit', response['patient_id'], _id, 'rt-struct.dcm')
-        output_dir = os.path.dirname(output_path)
-        os.makedirs(output_dir, exist_ok=True)
+        ## Save RT struct and reply
+        if for_editing:
+            output_path = os.path.join('/data/outputs', project, 'masks_to_edit', response['patient_id'], _id, 'rt-struct.dcm')
+            output_dir = os.path.dirname(output_path)
+            os.makedirs(output_dir, exist_ok=True)
  
-        shutil.copytree(input_path, os.path.join(output_dir, 'SCAN'))
+            shutil.copytree(local_path, os.path.join(output_dir, 'SCAN'))
 
-    else:
-        output_path = os.path.join(path_to_preds, 'rt-struct.dcm')
+        else:
+            output_path = os.path.join(path_to_preds, 'rt-struct.dcm')
     
     rtstruct.save(output_path)
 
