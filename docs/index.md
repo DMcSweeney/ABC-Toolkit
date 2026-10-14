@@ -109,6 +109,20 @@ There are two ways to get images into ABC (left side of the diagram, blue box): 
 
 The **Client** box is the Vue frontend (default `https://localhost:5000`). 
 
+### Data retention (real-time mode)  <a name="data_retention"></a>
+
+Scans received by Orthanc are stored in Orthanc, and a working copy is made for processing. The working copy is always deleted once its jobs finish, whether they succeeded or failed. How long Orthanc keeps the scan depends on the DICOM node that sent it, identified by its AE title:
+
+- `RETENTION_RULES` in `.env` maps AE titles to days, e.g. `'{"MOSAIQ": 30, "PACS": 0}'`. Nodes not listed use `RETENTION_DEFAULT_DAYS` (default `0`).
+- `0` days: the scan is deleted from Orthanc as soon as its jobs finish. Longer periods are enforced by a check that runs every `RETENTION_SWEEP_INTERVAL_SECONDS`.
+- `ORTHANC_MAX_PATIENTS` is a safety net: once Orthanc holds that many patients, it deletes the oldest ones, whatever the rules say.
+
+While a scan is still in Orthanc, the contour editor, stat recomputation after an edit and RT-STRUCT export fetch it back automatically. Once it has been deleted, RT-STRUCT export and stat recomputation report that it's no longer available. The editor keeps working if it was opened at least once before, because it caches the scan with the outputs. Modalities the pipeline ignores (e.g. RTPLAN, RTDOSE) are never copied for processing, and Orthanc keeps them under the same rules.
+
+**CBCTs** need their planning CT and its RTSTRUCT to still be in Orthanc when the CBCT arrives. Give the node they come from a retention period that covers the whole treatment course.
+
+Deleting a patient from the project page also deletes their scans from Orthanc.
+
 For the full set of endpoints behind each of these, see the [**API Reference**](api-reference.md).
 
 ### Available segmentation models  <a name="available_models"></a>

@@ -21,6 +21,7 @@ from flask import Blueprint, request, make_response, jsonify, send_file, abort
 
 from app import mongo
 from abcTK.inference.segment import get_loader_function
+from abcTK.orthanc_client import local_series
 from abcTK.segment.model_bank import model_bank
 
 bp = Blueprint('api/editor', __name__)
@@ -117,14 +118,21 @@ def get_scan():
     cache_dir = os.path.join(output_dir, 'editor_cache')
     cache_path = os.path.join(cache_dir, 'scan.nii.gz')
 
-    if refresh and os.path.isfile(cache_path):
-        os.remove(cache_path)
-
-    if not os.path.isfile(cache_path):
-        loader_function, _ = get_loader_function(input_path)
-        image = loader_function(input_path)
-        os.makedirs(cache_dir, exist_ok=True)
-        sitk.WriteImage(image, cache_path)
+    if refresh or not os.path.isfile(cache_path):
+        # Orthanc-received scans' inbox copies are removed after processing - restore from
+        # Orthanc if needed. Once cached here, later loads don't need the source scan at all,
+        # so a refresh never discards the cache unless it can be rebuilt.
+        try:
+            with local_series(input_path, _id) as local_path:
+                loader_function, _ = get_loader_function(local_path)
+                image = loader_function(local_path)
+        except ValueError:
+            if not os.path.isfile(cache_path):
+                raise
+            logger.warning(f"Source scan for {_id} no longer available - serving existing editor cache")
+        else:
+            os.makedirs(cache_dir, exist_ok=True)
+            sitk.WriteImage(image, cache_path)
 
     return send_file(cache_path, mimetype='application/octet-stream')
 

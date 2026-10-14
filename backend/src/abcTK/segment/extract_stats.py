@@ -10,6 +10,7 @@ from dataclasses import fields
 
 from abcTK.segment.engine import segmentationEngine
 from abcTK.inference.segment import get_loader_function
+from abcTK.orthanc_client import local_series
 import abcTK.database.collections as cl
 
 
@@ -37,23 +38,27 @@ def extract_stats(req):
         req['output_dir'] = query['output_dir']
     ## 
 
-    req['loader_function'], loader_name = get_loader_function(req['input_path'])
-    
     if type(req["vertebra"]) == list:
         logger.error("Make multiple requests to use multiple models.")
         raise ValueError("Vertebra should be a string representing a single level. Make multiple requests to use different models.")
 
-    req = handle_request(req)
-    # Set num_slices to None (i.e. to ignore this argument no matter what)
-    # Figure this out based on the mask
-    req['num_slices'] = None
+    ## Orthanc-received scans' inbox copies are removed after processing - restore from Orthanc
+    ## if needed. req['input_path'] keeps the original path, since that's what's stored in the db.
+    with local_series(req['input_path'], req['_id']) as local_path:
+        req['loader_function'], loader_name = get_loader_function(local_path)
 
-    if req['is_edit']:
-        _backup_original_mask_if_needed(req['output_dir'], req['vertebra'], req['compartment'])
+        req = handle_request(req)
+        # Set num_slices to None (i.e. to ignore this argument no matter what)
+        # Figure this out based on the mask
+        req['num_slices'] = None
 
-    logger.info(f"Processing request: {req}")
-    engine = segmentationEngine(**req)
-    data, paths_to_sanity = engine.forward_extract_stats(**req)
+        if req['is_edit']:
+            _backup_original_mask_if_needed(req['output_dir'], req['vertebra'], req['compartment'])
+
+        logger.info(f"Processing request: {req}")
+        engine_req = {**req, 'input_path': local_path}
+        engine = segmentationEngine(**engine_req)
+        data, paths_to_sanity = engine.forward_extract_stats(**engine_req)
     ## Update database
     update_database(req, data, paths_to_sanity)
     
